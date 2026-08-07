@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "repo": "YzLfireChiYv/RustMadoka",
+  "latest": {
+    "build_stamp": "pending",
+    "asset": "automadoka.exe",
+    "url": "",
+    "sha256": "",
+    "notes": "占位：验收通过后按构建分钟 stamp 发布 GitHub Release 并填写本文件"
+  }
+}

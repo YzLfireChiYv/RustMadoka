@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "published_at": "2026-08-06",
+  "default": "en",
+  "note": "Canonical public URL: https://raw.githubusercontent.com/YzLfireChiYv/rules/main/automadoka.json (also mirrored under RustMadoka/publish). Channels: en+jp 3.13.0; tw reserved when XAPK available. Sonet login for tw not in Rust yet.",
+  "channels": {
+    "en": {
+      "channel": "en",
+      "package_id": "com.aniplex.magia.exedra.en",
+      "version": "3.13.0",
+      "sign": "d929c89a96c474de5772d47848491c00",
+      "libcount": 34
+    },
+    "jp": {
+      "channel": "jp",
+      "package_id": "com.aniplex.magia.exedra.jp",
+      "version": "3.13.0",
+      "sign": "ac5fe842e97b0d5f5c129755c0c63d71",
+      "libcount": 34
+    }
+  }
+}

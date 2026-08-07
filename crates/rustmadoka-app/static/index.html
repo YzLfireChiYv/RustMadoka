@@ -1,0 +1,2853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Android 壳另注入 maximum-scale=1；桌面浏览器仍可缩放 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>RustMadoka</title>
+  <!--
+    SPA 样式：桌面默认 + 手机/触控放大。
+    Android WebView 注入 html.platform-android（MainActivity）。
+    文档: docs/tech/UI_ROUTING_AND_TASK_LOGS.md · docs/tech/ANDROID_DUAL_PLATFORM.md §UI
+  -->
+  <style>
+    :root { font-family: "Segoe UI","Microsoft YaHei",sans-serif; background:#0f1419; color:#e7ecf1; }
+    body { max-width: 1000px; margin: 16px auto; padding: 0 14px; }
+    h1 { font-size: 1.25rem; color:#7dd3fc; margin: 0 0 8px; }
+    h2 { font-size: 1rem; color:#bae6fd; margin: 12px 0 8px; }
+    section, .panel { background:#1a2332; border-radius:12px; padding:14px; margin:10px 0; }
+    label { display:block; margin:6px 0 3px; color:#94a3b8; font-size:.82rem; }
+    input, select, button { width:100%; box-sizing:border-box; padding:8px 10px; border-radius:8px; border:1px solid #334155; background:#0b1220; color:#e7ecf1; }
+    button { background:#0284c7; border:none; cursor:pointer; font-weight:600; margin-top:6px; }
+    button:disabled { opacity:.4; cursor:not-allowed; }
+    button.secondary { background:#334155; }
+    button.danger { background:#b91c1c; }
+    button.tiny { width:auto; margin:0; padding:5px 8px; font-size:.75rem; }
+    .ok { color:#4ade80; } .err { color:#f87171; } .warn { color:#fbbf24; } .muted { color:#64748b; font-size:.78rem; }
+    .hidden { display:none !important; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+    .card { background:#0b1220; border:1px solid #334155; border-radius:12px; padding:12px; }
+    .card h3 { margin:0 0 6px; }
+    /* CHANNEL-BADGE · MULTI_GROUP_UI §5.5 — 扫一眼能分辨 EN/JP/TW */
+    .ch-badge {
+      display:inline-block; font-weight:800; font-size:.75rem; letter-spacing:.04em;
+      padding:2px 8px; border-radius:6px; margin-left:8px; vertical-align:middle;
+      border:1px solid transparent; line-height:1.4;
+    }
+    .ch-badge.en { background:#0c4a6e; color:#7dd3fc; border-color:#0284c7; }
+    .ch-badge.jp { background:#4c1d95; color:#ddd6fe; border-color:#7c3aed; }
+    .ch-badge.tw { background:#713f12; color:#fde68a; border-color:#d97706; }
+    .ch-badge.unk { background:#334155; color:#e2e8f0; border-color:#64748b; }
+    .card.card-busy { border-color:#f59e0b; }
+    /* 组队配置卡：与游戏账号卡同网格，色带区分（PLAN_GROUP_RAID_UI） */
+    .card.card-gr { border-color:#7c3aed; background:linear-gradient(180deg,#12081f 0%,#0b1220 40%); }
+    .card.card-gr h3 { color:#ddd6fe; }
+    .gr-badge {
+      display:inline-block; font-weight:800; font-size:.7rem; letter-spacing:.04em;
+      padding:2px 8px; border-radius:6px; margin-left:6px; vertical-align:middle;
+      background:#4c1d95; color:#e9d5ff; border:1px solid #7c3aed;
+    }
+    .card .btns { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    #grModal {
+      position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.55);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    #grModal .gr-panel {
+      background:#1a2332; border:1px solid #7c3aed; border-radius:12px;
+      padding:16px; max-width:440px; width:100%; max-height:90vh; overflow:auto;
+    }
+    #grModal .gr-alias-list label { display:flex; align-items:center; gap:8px; color:#e7ecf1; margin:4px 0; }
+    #grModal .gr-alias-list input { width:auto; }
+    .card .btns button { margin:0; font-size:.78rem; }
+    .banner { background:#0c4a6e; color:#e0f2fe; padding:8px 10px; border-radius:8px; font-size:.82rem; margin-bottom:8px; }
+    .banner.warn { background:#422006; color:#fde68a; }
+    .topbar { position:sticky; top:0; z-index:40; background:#0f1419ee; border-bottom:1px solid #334155; padding:8px 0 10px; margin-bottom:8px; }
+    .topbar .nav { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .topbar .nav button { width:auto; margin:0; }
+    .runbox { border:1px solid #334155; border-radius:10px; padding:8px 10px; margin-top:8px; background:#0b1220; font-size:.82rem; }
+    .runbox.busy { border-color:#f59e0b; }
+    .runbox.paused { border-color:#38bdf8; }
+    /* 模块行：标题一行 + 三键一行（手机不再横向挤压成竖字） */
+    .mod { border-bottom:1px solid #1e293b; padding:10px 0; display:flex; flex-direction:column; gap:8px; }
+    .mod-title-row { display:flex; gap:10px; align-items:center; min-width:0; }
+    .mod-title-row input[type=checkbox] { width:auto; flex-shrink:0; margin:0; }
+    .mod-title-text { flex:1; min-width:0; }
+    .mod-title-text strong { display:block; font-size:1rem; line-height:1.35; word-break:break-word; }
+    .mod-actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; width:100%; max-width:none; }
+    .mod-actions button { margin:0; width:100%; }
+    .mod-fields { margin-top:2px; padding:8px; background:#0b1220; border-radius:8px; }
+    /* 展开/折叠双态（桌面+手机统一） */
+    .btn-fold { background:#334155 !important; border:1px solid #475569 !important; color:#e7ecf1 !important; }
+    .btn-fold.is-open { background:#0c1929 !important; border:1px solid #38bdf8 !important; color:#7dd3fc !important; }
+    /* 运行条：暂停/继续随状态高亮；禁用态半透明 */
+    .btn-run-ctrl.is-active { background:#0c1929 !important; border:1px solid #38bdf8 !important; color:#7dd3fc !important; }
+    .btn-run-ctrl.is-warn-active { background:#422006 !important; border:1px solid #f59e0b !important; color:#fde68a !important; }
+    .btn-run-ctrl:disabled { opacity:.4; cursor:not-allowed; }
+    .fold-toggle { background:#334155; border:1px solid #475569; color:#e7ecf1; }
+    .fold-box.open .fold-toggle, .fold-toggle.is-open {
+      background:#0c1929; border:1px solid #38bdf8; color:#7dd3fc;
+    }
+    /* 日志筛选：两列，勾选与文字同一水平中线 */
+    .log-filters { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-top:6px; }
+    .check-line {
+      display:flex; align-items:center; gap:8px; margin:0; color:#e7ecf1; font-size:.9rem;
+      min-height:36px; cursor:pointer; user-select:none;
+    }
+    .check-line input[type=checkbox] { width:18px; height:18px; min-height:18px; margin:0; flex-shrink:0; }
+    #logDetailWrap { margin-top:10px; }
+    #logDetailWrap .log-detail-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; align-items:center; }
+    #connHint { text-align:center; font-size:.8rem; margin:4px 0; min-height:1.2em; }
+    .progress-bar { height:6px; background:#1e293b; border-radius:4px; overflow:hidden; margin:6px 0; }
+    .progress-bar > i { display:block; height:100%; background:#0284c7; width:0%; }
+    #toastHost { position:fixed; right:12px; bottom:12px; z-index:200; display:flex; flex-direction:column-reverse; gap:6px; max-width:min(340px,92vw); pointer-events:none; }
+    .toast { pointer-events:none; background:#0f766e; color:#ecfdf5; padding:8px 12px; border-radius:8px; font-size:.8rem; opacity:0; transition:opacity .2s; }
+    .toast.show { opacity:1; } .toast.err { background:#991b1b; }
+    pre { background:#0b1220; padding:8px; border-radius:8px; max-height:280px; overflow:auto; font-size:.75rem; white-space:pre-wrap; }
+    .group-item { padding:10px; border:1px solid #334155; border-radius:10px; margin:6px 0; cursor:pointer; background:#0b1220; }
+    .group-item:hover { border-color:#0284c7; }
+    .fold-h { cursor:pointer; user-select:none; color:#94a3b8; font-size:.85rem; display:flex; align-items:center; gap:8px; }
+    .fold-box { border:1px solid #475569; border-radius:12px; padding:10px 12px; margin:10px 0; background:#121a27; }
+    .fold-box.open { border-color:#38bdf8; background:#0c1929; }
+    .fold-box .fold-toggle { width:auto; margin:0; padding:4px 10px; font-size:.75rem; background:#334155; }
+    .src-item { border:1px solid #334155; border-radius:10px; padding:10px; margin:8px 0; background:#0b1220; font-size:.8rem; }
+    .src-item.builtin { border-color:#1d4ed8; }
+    .src-item.bad { border-color:#b91c1c; }
+    .src-item.ok { border-color:#15803d; }
+    .n-item { border:1px solid #334155; border-radius:8px; padding:8px; margin:6px 0; background:#0b1220; font-size:.8rem; }
+    .home-head { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; justify-content:space-between; margin-bottom:8px; }
+    .home-head-left { flex:0 1 auto; }
+    .diag-box { flex:1 1 220px; max-width:340px; border:1px solid #38bdf8; border-radius:12px; padding:8px 10px; background:#0c1929; }
+    .diag-box h3 { margin:0 0 4px; font-size:.85rem; color:#7dd3fc; }
+    .switch-row { display:inline-flex; align-items:center; gap:6px; font-size:.8rem; color:#94a3b8; margin-left:8px; }
+    .switch-row input { width:auto; }
+    /* 主页运行面板 = 类程序运行面板终端：完整流式行，不是设置页进度条 */
+    .home-console {
+      border:1px solid #334155; border-radius:10px; padding:10px 12px; margin:10px 0;
+      background:#0b1220; font-size:.82rem; font-family:ui-monospace,Consolas,monospace;
+      min-height: min(72vh, 780px); height: min(78vh, 860px); max-height: 92vh;
+      display:flex; flex-direction:column; resize: vertical; overflow: hidden;
+    }
+    .home-console .hc-head { color:#94a3b8; font-size:.78rem; margin-bottom:4px; flex-shrink:0; }
+    .home-console #homeConsoleLines {
+      flex:1 1 auto; min-height: 40vh; height: 100%; overflow-y: scroll; overflow-x: auto;
+      border:1px solid #1e293b; border-radius:8px; padding:8px 10px; margin:4px 0;
+      background:#05080e; color:#cbd5e1;
+      /* 深色滚动条：避免白色系统条过短/突兀 */
+      scrollbar-width: thin;
+      scrollbar-color: #475569 #0f172a;
+    }
+    .home-console #homeConsoleLines::-webkit-scrollbar { width: 14px; height: 14px; }
+    .home-console #homeConsoleLines::-webkit-scrollbar-track { background: #0f172a; border-radius: 8px; }
+    .home-console #homeConsoleLines::-webkit-scrollbar-thumb {
+      background: #475569; border-radius: 8px; border: 2px solid #0f172a; min-height: 48px;
+    }
+    .home-console #homeConsoleLines::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    .home-console .line { padding:2px 0; border-bottom:1px solid #111827; white-space:pre-wrap; word-break:break-word; line-height:1.35; }
+    .home-console .line:last-child { border-bottom:none; }
+    .home-console .line .ts { color:#64748b; margin-right:6px; }
+    .home-console .line .al { color:#7dd3fc; margin-right:6px; }
+    .home-console .hc-resize-hint { color:#475569; font-size:.7rem; flex-shrink:0; }
+    .home-console .hc-btns { flex-shrink:0; display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+    .log-item { border:1px solid #334155; border-radius:10px; padding:10px; margin:8px 0; background:#0b1220; }
+    .log-item .log-body { margin-top:8px; white-space:pre-wrap; max-height: min(60vh, 480px); overflow:auto;
+      background:#060a10; padding:8px; border-radius:8px; font-size:.75rem; }
+    .slot-card { border:1px solid #334155; border-radius:10px; padding:10px; margin:8px 0; background:#0b1220; font-size:.8rem; }
+    .slot-card.active { border-color:#22c55e; box-shadow:0 0 0 1px #22c55e44; }
+    .slot-card.empty { opacity:.65; }
+    .step-ok { color:#4ade80; } .step-bad { color:#f87171; } .step-wait { color:#94a3b8; }
+    #runReport { white-space:pre-wrap; font-size:.78rem; max-height:160px; overflow:auto; margin-top:6px; padding:8px; background:#0b1220; border-radius:8px; border:1px solid #334155; }
+
+    /*
+      手机 / 粗指针 / Android WebView：更大字体与点按、更窄视觉边框（细线 + 浅色）。
+      桌面宽屏保持上列默认，不盲目放大。
+      Android 壳: apps/android MainActivity 注入 .platform-android
+    */
+    @media (max-width: 820px), (pointer: coarse) {
+      body { margin: 10px auto 72px; padding: 0 10px; font-size: 17px; max-width: 100%; }
+      h1 { font-size: 1.5rem; line-height: 1.25; }
+      h2 { font-size: 1.15rem; margin: 14px 0 10px; }
+      label { font-size: 0.95rem; margin: 10px 0 4px; }
+      .muted { font-size: 0.9rem; }
+      section, .panel { padding: 12px; margin: 8px 0; border-radius: 10px; }
+      input, select, button, textarea {
+        padding: 14px 14px; font-size: 1.05rem; min-height: 48px;
+        border-radius: 10px; border-width: 1px; border-color: #475569;
+      }
+      button { margin-top: 8px; }
+      button.tiny { padding: 12px 16px; font-size: 0.95rem; min-height: 44px; }
+      .row { grid-template-columns: 1fr; gap: 10px; }
+      .cards { grid-template-columns: 1fr; gap: 12px; }
+      .card { padding: 14px; border-width: 1px; border-color: #475569; }
+      .card h3 { font-size: 1.1rem; }
+      .card .btns { gap: 10px; }
+      .card .btns button { font-size: 0.95rem; min-height: 48px; }
+      .group-item { padding: 14px 12px; font-size: 1.05rem; border-width: 1px; border-color: #475569; min-height: 48px; }
+      .banner { font-size: 0.95rem; padding: 10px 12px; }
+      .topbar { padding: 10px 0 12px; border-bottom-width: 1px; }
+      .topbar .nav { gap: 10px; }
+      .topbar .nav button { min-height: 44px; padding: 10px 14px; font-size: 0.95rem; }
+      .runbox { font-size: 0.95rem; padding: 10px 12px; border-width: 1px; }
+      .mod { padding: 12px 0; gap: 10px; }
+      .mod-title-row input[type=checkbox] { width: 24px; height: 24px; min-height: 24px; }
+      .mod-title-text strong { font-size: 1.1rem; }
+      .mod-actions { gap: 8px; }
+      .mod-actions button { min-height: 44px; font-size: 0.9rem; }
+      .mod-fields { padding: 10px; }
+      .log-filters { gap: 10px 12px; }
+      .check-line { min-height: 44px; font-size: 1rem; }
+      .check-line input[type=checkbox] { width: 22px; height: 22px; min-height: 22px; }
+      .progress-bar { height: 8px; }
+      .fold-h { font-size: 1rem; gap: 10px; min-height: 44px; }
+      .fold-box { padding: 12px; border-width: 1px; }
+      .fold-box .fold-toggle { padding: 10px 14px; font-size: 0.9rem; min-height: 40px; }
+      .src-item, .slot-card, .n-item { font-size: 0.95rem; padding: 12px; border-width: 1px; }
+      .home-head { flex-direction: column; gap: 12px; }
+      .diag-box { max-width: none; width: 100%; flex: 1 1 auto; padding: 12px; border-width: 1px; }
+      .diag-box h3 { font-size: 1rem; }
+      .switch-row { font-size: 0.95rem; margin-left: 0; margin-top: 6px; }
+      .switch-row input { width: 22px; height: 22px; min-height: 22px; }
+      .home-console { font-size: 0.9rem; border-width: 1px; }
+      #runReport { font-size: 0.9rem; max-height: 200px; border-width: 1px; }
+      pre { font-size: 0.85rem; max-height: 320px; }
+      #toastHost { left: 12px; right: 12px; bottom: 72px; max-width: none; }
+      .toast { font-size: 0.95rem; padding: 12px 14px; }
+      /* 设置页「工具」等大按钮 */
+      #btnGoTools { font-size: 1.1rem !important; padding: 14px 20px !important; min-height: 52px; }
+    }
+    /* WebView 注入类：窄屏媒体查询未命中时仍放大（部分平板/桌面模拟） */
+    html.platform-android body { margin-bottom: 72px; }
+    html.platform-android .card .btns button,
+    html.platform-android button.tiny { min-height: 44px; }
+    /* 壳内：禁止横向滚动（缩放由 WebView setSupportZoom(false) 锁） */
+    html.platform-android, html.platform-android body {
+      overflow-x: hidden;
+      touch-action: pan-y;
+      overscroll-behavior-x: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="toastHost" aria-live="polite"></div>
+  <div class="banner hidden" id="gateBanner"></div>
+  <!-- 系统浏览器/多窗口：本机服务连通性（App 须在运行） -->
+  <p class="muted" id="connHint"></p>
+  <p class="muted" id="portHint" style="text-align:center;margin:4px 0"></p>
+  <div id="routeMsg" class="muted"></div>
+
+  <!-- 顶栏：设置/工具/日志页共用 -->
+  <div id="topBar" class="topbar hidden">
+    <div class="nav">
+      <button type="button" class="secondary tiny" id="btnHome">退出到主页</button>
+      <button type="button" class="secondary tiny btn-fold is-open" id="btnToggleRun" title="展开/折叠运行条">折叠运行状态</button>
+      <span class="muted" id="crumb"></span>
+    </div>
+    <div class="runbox" id="runBox">
+      <div id="runText" class="muted">空闲</div>
+      <div class="progress-bar"><i id="progBar"></i></div>
+      <div id="runReport" class="hidden"></div>
+      <p class="muted hidden" id="runOwnerHint" style="margin:4px 0 0"></p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" class="secondary tiny btn-run-ctrl" id="btnPause">紧急暂停</button>
+        <button type="button" class="secondary tiny btn-run-ctrl" id="btnResume">继续</button>
+        <button type="button" class="danger tiny" id="btnAbort">放弃</button>
+        <button type="button" class="secondary tiny" id="btnClearReport">清空显示</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="viewLogin">
+    <h1>RustMadoka</h1>
+    <section>
+      <h2>用户组</h2>
+      <p class="muted">无密码组一点即进；有密码组需验密。明文组在本机可读。</p>
+      <div id="groupList">加载中…</div>
+      <h2 class="fold-h" onclick="tog('newGroupBox')">▸ 新建用户组</h2>
+      <div id="newGroupBox" class="hidden">
+        <div class="row">
+          <div><label>名称</label><input id="newGroup" /></div>
+          <div><label>密码（可空）</label><input id="newGroupPw" type="password" /></div>
+        </div>
+        <button onclick="createGroup()">创建</button>
+      </div>
+      <div id="loginMsg"></div>
+    </section>
+    <!-- 登录页：全局指纹摘要（进组后才有完整环境检测） -->
+    <div class="fold-box" id="loginVerFold">
+      <div class="fold-h" style="justify-content:space-between;width:100%">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0" onclick="toggleFoldBox('loginVerFold','loginVerBox','loginVerToggle')">
+          <button type="button" class="fold-toggle" id="loginVerToggle">展开</button>
+          <span style="flex:1">游戏版本 / 指纹</span>
+        </div>
+        <button type="button" class="tiny" onclick="event.stopPropagation();refreshDefaultFp()">一键刷新</button>
+      </div>
+      <div class="muted" id="loginFpSummary" style="margin-top:6px;font-size:.8rem">加载中…</div>
+      <div id="loginVerBox" class="hidden" style="margin-top:10px">
+        <p class="muted">看不懂就别管。完整环境检测请登录用户组后使用。</p>
+        <div id="loginSlotList"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <button type="button" class="secondary tiny" onclick="resetFpSlots()">一键复位到内置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="viewCards" class="hidden">
+    <div class="home-head">
+      <div class="home-head-left" style="flex:1">
+        <h1 style="margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:10px">
+          <span>账号 · <span id="curGroup"></span></span>
+          <small class="muted" id="plainTag"></small>
+          <span class="muted" id="homeBuildVer" style="font-size:.85rem;font-weight:600;color:#7dd3fc"></span>
+        </h1>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">
+          <button class="secondary tiny" onclick="goLogin()">切换用户组</button>
+          <button type="button" class="secondary tiny" id="btnChangeGroupPw" onclick="openChangeGroupPw()">修改用户组密码</button>
+          <label class="switch-row"><input type="checkbox" id="homeConsoleToggle" onchange="toggleHomeConsole()" /> 运行面板</label>
+        </div>
+      </div>
+      <div class="diag-box" id="homeDiagBox">
+        <h3>环境与版本</h3>
+        <div class="muted" id="homeFpSummary" style="line-height:1.35">加载中…</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <button type="button" class="tiny" onclick="refreshDefaultFp()">一键刷新</button>
+          <button type="button" class="secondary tiny" onclick="goDiagnose()">环境检测</button>
+        </div>
+      </div>
+    </div>
+    <div class="fold-box" id="addAccFoldBox">
+      <div class="fold-h" onclick="toggleFoldBox('addAccFoldBox','addAccBox','addAccToggle')">
+        <button type="button" class="fold-toggle" id="addAccToggle">展开</button>
+        <span>添加游戏账号（默认折叠 · 只负责加卡片）</span>
+      </div>
+      <div id="addAccBox" class="hidden" style="margin-top:10px">
+        <div class="row">
+          <div><label>别名</label><input id="alias" value="主号" /></div>
+          <div><label>服</label><select id="channel"></select></div>
+        </div>
+        <div class="muted" id="channelHint">安装包自带日服/国际服指纹；无需先连 GitHub。台服暂不管。</div>
+        <label>引继码</label><input id="mig" />
+        <label>游戏密码</label><input id="gpw" type="password" />
+        <button type="button" onclick="addAccount()">添加</button>
+      </div>
+    </div>
+    <!-- 组队 Raid：入口不在「添加账号」类型里；多配置借用「卡片」设计 → 见 PLAN_GROUP_RAID_UI / GROUP_RAID §8（待实现，勿抢跑） -->
+    <div class="panel" style="margin-top:10px">
+      <label><input type="checkbox" id="homeConfirmOneClick" style="width:auto" onchange="saveHomeConfirm()" /> 主页：一键清日常需要二次确认</label>
+      <span class="muted">与设置页开关相互独立；关闭此项本身也需要确认</span>
+    </div>
+    <div class="fold-box" id="verFoldBox">
+      <div class="fold-h" onclick="toggleFoldBox('verFoldBox','verBox','verToggle')">
+        <button type="button" class="fold-toggle" id="verToggle">展开</button>
+        <span id="verFoldTitle">版本与指纹槽 · 摘要加载中…</span>
+      </div>
+      <div id="verBox" class="hidden" style="margin-top:10px">
+        <p class="warn" style="margin:0 0 8px">看不懂就别管。默认源由作者维护；空槽不能启用；格式不合格不能写入。</p>
+        <div class="muted" id="verLocal">本地版本…</div>
+        <div class="muted" id="verFoldDetail" style="margin-bottom:8px"></div>
+        <div id="slotList"></div>
+        <h3 style="font-size:.9rem;color:#bae6fd;margin-top:12px">写入自定义槽（二选一槽位）</h3>
+        <select id="fillSlotId"><option value="custom_0">自定义槽 1</option><option value="custom_1">自定义槽 2</option></select>
+        <input id="customSourceUrl" placeholder="指纹 JSON 的 https:// URL（可选）" />
+        <label>或粘贴合法指纹 JSON</label>
+        <textarea id="pasteVer" rows="3" style="width:100%;background:#0b1220;color:#e7ecf1;border:1px solid #334155;border-radius:8px"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <button type="button" class="tiny" onclick="fillCustomSlot()">写入槽（需手动启用）</button>
+          <button type="button" class="secondary tiny" onclick="resetFpSlots()">一键复位到内置</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 6px">
+      <h2 style="margin:0">账号卡片</h2>
+      <button type="button" class="tiny" id="btnBatchDaily" onclick="runBatchDaily()" disabled>一键清理所选卡片日常</button>
+      <span class="muted" id="batchHint">勾选卡片后可批量（会二次确认）</span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0 6px">
+      <h2 style="margin:0">组队配置卡片</h2>
+      <button type="button" class="tiny" onclick="openGrModal(null)">新建组队配置</button>
+      <span class="muted">需要几套组队就建几张卡；设置与开始在卡片上（不是添加账号里）</span>
+    </div>
+    <div class="cards" id="grCards"></div>
+    <div id="grModal" class="hidden">
+      <div class="gr-panel">
+        <h2 style="margin-top:0" id="grModalTitle">组队配置</h2>
+        <input type="hidden" id="grEditId" />
+        <label>显示名</label>
+        <input id="grName" placeholder="例如：日服三号组队" />
+        <label>房间开放范围</label>
+        <select id="grRoomOpen">
+          <option value="">— 请选择 —</option>
+          <option value="self">仅自己（只适合单号打满日次数）</option>
+          <option value="guild">工会</option>
+          <option value="friend">好友</option>
+          <option value="all">全体</option>
+        </select>
+        <label>统一队伍（名或 id；可空=各号用自身召唤队设置）</label>
+        <input id="grParty" placeholder="可选" />
+        <label class="check-line" style="margin-top:8px"><input type="checkbox" id="grLeave" /> 援助后退出房间（默认关：要结算奖励）</label>
+        <label style="margin-top:10px">参与游戏账号（同服务器）</label>
+        <div class="gr-alias-list" id="grAliasList"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button type="button" onclick="saveGrEntry()">保存</button>
+          <button type="button" class="secondary" onclick="closeGrModal()">取消</button>
+        </div>
+        <p class="muted" style="margin-top:8px">删卡后开跑会自动从名单去掉；剩 1 人自动打满今日次数；剩 0 人则无法开始。</p>
+      </div>
+    </div>
+    <div id="homeConsole" class="home-console hidden">
+      <div class="hc-head">完整运行监视流（类似程序运行面板终端 · 逐行记录；拖面板右下角可调高度 · 非设置页进度条）</div>
+      <div id="homeConsoleLines"><div class="line muted">空闲 — 开始清日常或单独运行后，这里会逐行追加完整过程（如刷图每轮开局/结算）。</div></div>
+      <div class="hc-resize-hint">提示：可拖动本面板右下角改变高度；滚动条为深色且加宽，便于浏览数百行。</div>
+      <div class="hc-btns">
+        <button type="button" class="secondary tiny" id="hcPause" disabled>暂停</button>
+        <button type="button" class="secondary tiny" id="hcResume" disabled>继续</button>
+        <button type="button" class="danger tiny" id="hcAbort" disabled>放弃</button>
+        <button type="button" class="secondary tiny" id="hcClear">清空监视流显示</button>
+        <label class="switch-row" style="margin-left:auto"><input type="checkbox" id="hcFollow" checked /> 自动滚到底</label>
+      </div>
+    </div>
+    <pre id="logOut" class="hidden"></pre>
+  </div>
+
+  <div id="viewDiagnose" class="hidden">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" class="secondary tiny" onclick="navigate('/'+enc(currentGroup))">返回主页</button>
+      <h1 style="margin:0">环境检测 · <span id="diagGroup"></span></h1>
+    </div>
+    <p class="muted">不消耗体力/不刷图。分项检测后可用所选账号「获取角色信息」试连通。密码错误会单独说明。</p>
+    <div class="panel">
+      <label>选择账号卡片（试登录用）</label>
+      <select id="diagAlias"></select>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <button type="button" class="tiny" onclick="runDiagnose(true)">开始完整检测</button>
+        <button type="button" class="secondary tiny" onclick="runDiagnose(false)">仅环境（不登录）</button>
+        <button type="button" class="secondary tiny" onclick="copyDiagReport()">复制完整报告</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2 style="margin-top:0">进度</h2>
+      <div id="diagSteps" class="muted">尚未开始</div>
+      <h2>总评</h2>
+      <div id="diagSummary" class="warn">—</div>
+      <pre id="diagReport" class="hidden"></pre>
+    </div>
+  </div>
+
+  <div id="copyModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:70;display:flex;align-items:center;justify-content:center">
+    <div class="panel" style="width:min(400px,92vw)">
+      <h2>复制配置到…</h2>
+      <p class="muted">仅复制<strong>设置</strong>（开关/二次确认等），<strong>不复制</strong>引继码与游戏密码。</p>
+      <div id="copyList"></div>
+      <button class="secondary" onclick="closeCopy()">取消</button>
+    </div>
+  </div>
+
+  <div id="viewSettings" class="hidden">
+    <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div style="flex:1;min-width:200px">
+        <h1 style="margin:0">设置 · <span id="setAlias"></span>
+          <small class="muted" id="setBuildVer" style="font-size:.8rem;margin-left:8px"></small>
+        </h1>
+        <p class="muted" style="margin:6px 0">勾选只影响一键；单独运行不改勾选。展开与勾选独立。</p>
+      </div>
+      <button type="button" id="btnGoTools" onclick="goTools()" style="width:auto;font-size:1rem;padding:10px 18px;margin:0">工具</button>
+    </div>
+    <div class="muted" id="saveHint">改动自动保存</div>
+    <div class="panel" style="padding:8px 10px">
+      <label><input type="checkbox" id="setConfirmOneClick" style="width:auto" onchange="saveSettingsConfirm()" /> 设置页：一键清日常需要二次确认</label>
+      <span class="muted">与主页开关独立；关闭需再确认</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+      <button type="button" class="secondary tiny" onclick="setAllMods(true)">全选</button>
+      <button type="button" class="secondary tiny" onclick="setAllMods(false)">全不选</button>
+      <button type="button" class="secondary tiny" onclick="setSafeMods()">仅低风险建议项</button>
+      <button type="button" class="danger tiny" id="btnOneClick" onclick="runOneClick()">一键清日常</button>
+      <button type="button" class="secondary tiny" id="btnIoFold" onclick="toggleIoFold()">展开导入导出</button>
+      <button type="button" class="secondary tiny" onclick="goLogs()">任务日志</button>
+    </div>
+    <div id="ioFold" class="panel hidden" style="margin:8px 0">
+      <h3 style="margin:0 0 8px;font-size:.9rem;color:#bae6fd">导入 / 导出（AM2 短码含上游兼容与校验）</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button type="button" class="tiny" onclick="exportClip()">剪贴板导出设置</button>
+        <button type="button" class="tiny" onclick="importClip()">剪贴板导入设置</button>
+        <button type="button" class="tiny" onclick="exportConfigFile()">导出到文件</button>
+        <button type="button" class="tiny" onclick="importConfigFile()">从文件导入</button>
+        <button type="button" class="tiny" onclick="exportConfigPack()">整卡短码导出</button>
+        <button type="button" class="tiny" onclick="importConfigPack()">整卡短码导入</button>
+        <button type="button" class="tiny" onclick="exportShopPack('SHOP3')">三店短码导出</button>
+        <button type="button" class="tiny" onclick="importShopPack('SHOP3')">三店短码导入</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">单店短码在下方各商店模块展开后的第一行。</p>
+    </div>
+    <div id="modList"></div>
+  </div>
+
+  <div id="viewTools" class="hidden">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" class="secondary tiny" onclick="navigate('/'+enc(currentGroup)+'/'+enc(currentAlias))">返回设置</button>
+      <h1 style="margin:0">工具 · <span id="toolAlias"></span></h1>
+    </div>
+    <p class="muted">快速洗词条：列表来自登录后全服 master（非持有列表）。未持有角色会中止。</p>
+    <div class="panel" id="washPanel">
+      <button type="button" class="secondary tiny" onclick="loadWashOptions()">加载角色/词条列表</button>
+      <div class="muted" id="washLoadHint">请先加载列表（会登录游戏，无资源消耗）</div>
+      <label>目标角色</label>
+      <select id="washStyle"></select>
+      <label>目标词条1</label>
+      <select id="washSub1"></select>
+      <label>目标词条2</label>
+      <select id="washSub2"></select>
+      <label>目标词条3</label>
+      <select id="washSub3"></select>
+      <div class="row">
+        <div><label>重复次数</label><input type="number" id="washTimes" value="10" min="1" max="999" /></div>
+        <div><label>技能石序号</label><input type="number" id="washIdx" value="1" min="1" max="9" /></div>
+      </div>
+      <label><input type="checkbox" id="washOr" style="width:auto" /> 启用【或/OR】逻辑（满足任一目标即停）</label>
+      <button type="button" class="danger" id="btnWash" onclick="runWash()">开始洗词条</button>
+      <pre id="washLog" class="hidden"></pre>
+    </div>
+  </div>
+
+  <div id="viewLogs" class="hidden">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" class="secondary tiny" onclick="backFromLogs()">返回</button>
+      <h1 style="margin:0">任务日志 · <span id="logAlias"></span></h1>
+      <button type="button" class="secondary tiny" onclick="loadLogs()">刷新列表</button>
+    </div>
+    <!-- 筛选 / 清理 分折叠；按天清理。文档: docs/tech/UI_ROUTING_AND_TASK_LOGS.md -->
+    <div class="fold-box" id="logFilterFold" style="margin-top:8px">
+      <div class="fold-h" onclick="toggleFoldBox('logFilterFold','logFilterBox','logFilterToggle')">
+        <button type="button" class="fold-toggle" id="logFilterToggle">展开</button>
+        <span>触发方式筛选（勾选=显示该来源的日志）</span>
+      </div>
+      <div id="logFilterBox" class="hidden" style="margin-top:10px">
+        <div class="log-filters">
+          <label class="check-line"><input type="checkbox" class="trF" value="one_click_daily" checked onchange="loadLogs()" /> 一键清日常</label>
+          <label class="check-line"><input type="checkbox" class="trF" value="single_module" checked onchange="loadLogs()" /> 单独运行某功能</label>
+          <label class="check-line"><input type="checkbox" class="trF" value="cli" checked onchange="loadLogs()" /> 命令行（CLI）</label>
+          <label class="check-line"><input type="checkbox" class="trF" value="scheduled" checked onchange="loadLogs()" /> 定时任务</label>
+        </div>
+        <p class="muted" style="margin:8px 0 0">取消勾选后，列表中对应来源的任务记录会被隐藏（不会删除磁盘上的日志）。</p>
+      </div>
+    </div>
+    <div class="fold-box" id="logCleanFold">
+      <div class="fold-h" onclick="toggleFoldBox('logCleanFold','logCleanBox','logCleanToggle')">
+        <button type="button" class="fold-toggle" id="logCleanToggle">展开</button>
+        <span>日志清理（按天保留，不是按条数）</span>
+      </div>
+      <div id="logCleanBox" class="hidden" style="margin-top:10px">
+        <p class="muted" style="margin:0 0 8px">
+          任务日志按开始时间存放。打开「自动清理」后，程序会<strong>立即执行一次</strong>清理，并在以后保存设置时按所选天数删除更早记录。
+          清理前均需二次确认。
+        </p>
+        <label>自动清理：保留最近多少天内的日志（更早的删除）</label>
+        <select id="logRetainDays">
+          <option value="7">7 天</option>
+          <option value="30">30 天</option>
+        </select>
+        <label class="check-line" style="margin-top:10px">
+          <input type="checkbox" id="logAutoClean" /> 开启自动清理（打开时需确认，并立即执行一次）
+        </label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button type="button" class="secondary tiny" onclick="saveLogCleanSettings()">保存自动清理设置</button>
+          <button type="button" class="danger tiny" onclick="manualCleanLogs(true)">立即清理：仅「一键清日常」中过期记录</button>
+          <button type="button" class="danger tiny" onclick="manualCleanLogs(false)">立即清理：本账号全部过期任务日志</button>
+        </div>
+      </div>
+    </div>
+    <div id="logList"></div>
+  </div>
+
+  <div id="pwModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:60">
+    <div class="panel" style="width:min(360px,92vw)">
+      <h2>用户组密码 · <span id="pwGroup"></span></h2>
+      <input type="password" id="modalPw" />
+      <button onclick="confirmPw()">登录</button>
+      <button class="secondary" onclick="closePw()">取消</button>
+    </div>
+  </div>
+
+  <!-- 改密：PLAN_UI_ROUTING §2 — 成功后清 token 回登录/验密 -->
+  <div id="chgPwModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:61">
+    <div class="panel" style="width:min(400px,92vw)">
+      <h2>修改用户组密码 · <span id="chgPwGroup"></span></h2>
+      <p class="muted">成功后须重新登录该用户组。新密码留空 = 改为明文组（无密码）。</p>
+      <label>当前密码（明文组可空）</label>
+      <input type="password" id="chgPwOld" autocomplete="current-password" />
+      <label>新密码</label>
+      <input type="password" id="chgPwNew" autocomplete="new-password" />
+      <label>确认新密码</label>
+      <input type="password" id="chgPwNew2" autocomplete="new-password" />
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button type="button" onclick="submitChangeGroupPw()">保存并重新登录</button>
+        <button type="button" class="secondary" onclick="closeChangeGroupPw()">取消</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const LOW_RISK = new Set();
+let token = localStorage.getItem('token') || '';
+let currentGroup = '';
+let currentAlias = '';
+/** 当前设置页账号渠道 en/jp/tw（关卡 mst 缓存键） */
+let currentChannel = 'en';
+let allowDaily = false;
+let modulesMeta = [];
+let setState = { enabled: {}, config: {}, expanded: {} };
+let pendingPatch = {}, pendingChanges = {}, saveTimer = null, saving = false;
+let route = { page: 'login' };
+let logContext = 'card'; // card | module
+let pollRun = null;
+
+/**
+ * 本机 API。带超时，避免系统浏览器刷新时请求挂死 → 进度条一直转。
+ * 默认 20s 仅适合列表/配置；**模块运行 / 一键日常必须传 timeoutMs**（快速刷图可数分钟）。
+ * 曾因默认 20s 把「仍在打游戏服」误报为「本机无响应」。
+ * Docs: docs/tech/WIRE_AND_DEBUG_PROBES.md · docs/tech/UI_ROUTING_AND_TASK_LOGS.md
+ */
+const api = (path, opt={}) => {
+  const timeoutMs = opt.timeoutMs != null ? opt.timeoutMs : 20000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const headers = { 'x-token': token, ...(opt.headers||{}) };
+  if (opt.body !== undefined) headers['Content-Type'] = 'application/json';
+  return fetch(path, {
+    method: opt.method||'GET',
+    headers,
+    body: opt.body !== undefined ? JSON.stringify(opt.body) : undefined,
+    signal: ctrl.signal,
+    cache: 'no-store',
+  }).then(async r => {
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok && (j.error || j.ok===false)) throw new Error(j.error || JSON.stringify(j));
+    return j;
+  }).catch(e => {
+    if (e && e.name === 'AbortError') {
+      const sec = Math.round(timeoutMs/1000);
+      throw new Error(
+        '请求超时（'+sec+' 秒内未返回）。可能原因：① 模块仍在打游戏服（如快速刷图多轮）；② 本机 exe 未运行或卡死；③ 指纹/网络慢。请看程序运行面板终端或开发版 wire 目录。'
+      );
+    }
+    throw e;
+  }).finally(() => clearTimeout(timer));
+};
+
+function showToast(t, b, err) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (err?' err':'');
+  el.tabIndex = -1;
+  el.textContent = t + (b ? '\n'+b : '');
+  toastHost.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),200); }, 3000);
+}
+function tog(id){ document.getElementById(id).classList.toggle('hidden'); }
+/** 折叠盒：open 类 + 按钮 is-open + 文案「展开/收起」双态 */
+function toggleFoldBox(boxId, bodyId, btnId) {
+  const body = document.getElementById(bodyId);
+  const box = document.getElementById(boxId);
+  const btn = document.getElementById(btnId);
+  const open = body.classList.toggle('hidden') === false;
+  if (open) {
+    box.classList.add('open');
+    btn.textContent = '收起';
+    btn.classList.add('is-open');
+  } else {
+    box.classList.remove('open');
+    btn.textContent = '展开';
+    btn.classList.remove('is-open');
+  }
+}
+function setConnHint(text, isErr) {
+  const el = document.getElementById('connHint');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = isErr ? 'err' : 'muted';
+  el.style.textAlign = 'center';
+}
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function enc(s){ return encodeURIComponent(s); }
+
+function parseRoute() {
+  const raw = location.pathname.replace(/\/+$/,'') || '/';
+  const parts = raw === '/' ? [] : raw.slice(1).split('/').map(p => { try { return decodeURIComponent(p); } catch { return p; } });
+  if (parts.length === 0) return { page:'login' };
+  if (parts.length === 1) return { page:'cards', group: parts[0] };
+  if (parts.length === 2) {
+    if (parts[1] === '检测' || parts[1] === 'diagnose') return { page:'diagnose', group: parts[0] };
+    return { page:'settings', group: parts[0], alias: parts[1] };
+  }
+  const sub = parts[2];
+  if (sub === '工具' || sub === 'tools') return { page:'tools', group: parts[0], alias: parts[1] };
+  if (sub === '日志' || sub === 'logs') return { page:'logs', group: parts[0], alias: parts[1], cardOnly: false };
+  return { page:'settings', group: parts[0], alias: parts[1] };
+}
+
+function navigate(path, replace) {
+  if (replace) history.replaceState(null, '', path);
+  else history.pushState(null, '', path);
+  applyRoute();
+}
+
+/**
+ * 路由鉴权与分层回退 — 对照 docs/PLAN_UI_ROUTING_LOGS.md · tech/UI_ROUTING_AND_TASK_LOGS.md · C23
+ * - 组不存在 → `/` + 人话
+ * - 加密组未对「该组」验密 → 弹密码（不得用其它组 token 顶替）
+ * - 明文组 → 可空密码登录
+ * - 别名不存在 → `/{组}` + 人话
+ * 服务端 SPA /*path 只负责加载壳；本函数负责语义。
+ */
+async function applyRoute() {
+  route = parseRoute();
+  routeMsg.textContent = '';
+  viewLogin.classList.add('hidden');
+  viewCards.classList.add('hidden');
+  viewSettings.classList.add('hidden');
+  viewTools.classList.add('hidden');
+  viewLogs.classList.add('hidden');
+  const viewDiagnose = document.getElementById('viewDiagnose');
+  if (viewDiagnose) viewDiagnose.classList.add('hidden');
+  topBar.classList.add('hidden');
+  stopRunPoll();
+  stopConfigPoll();
+
+  if (route.page === 'login') {
+    viewLogin.classList.remove('hidden');
+    try { await loadGroups(); } catch(e) {
+      groupList.innerHTML = '<p class="err">加载用户组失败：'+esc(String(e))+'</p>';
+    }
+    try { await loadFpSlotsUi(); } catch(e) {
+      const el = document.getElementById('loginFpSummary');
+      if (el) el.textContent = '指纹摘要加载失败（可稍后刷新）';
+    }
+    try { await loadBuildVerUi(); } catch(_) {}
+    return;
+  }
+
+  // —— 1) 组是否存在（公开列表，不依赖 token）——
+  let groupMeta = null;
+  try {
+    const j = await api('/api/groups');
+    groupMeta = (j.groups||[]).find(g => g.name === route.group) || null;
+  } catch(e) {
+    routeMsg.textContent = '无法读取用户组列表：'+String(e);
+    showToast('连接失败', String(e), true);
+    viewLogin.classList.remove('hidden');
+    return;
+  }
+  if (!groupMeta) {
+    routeMsg.textContent = '用户组「'+route.group+'」不存在，已回退到登录页';
+    showToast('路径无效', '用户组不存在：'+route.group, true);
+    navigate('/', true);
+    return;
+  }
+
+  // —— 2) 会话必须属于 URL 中的该组 ——
+  const okSess = await ensureSessionForGroup(route.group, !!groupMeta.has_password);
+  if (!okSess) return; // 已弹密码或已回退
+
+  currentGroup = route.group;
+
+  if (route.page === 'cards') {
+    viewCards.classList.remove('hidden');
+    curGroup.textContent = route.group;
+    const plain = document.getElementById('plainTag');
+    if (plain) plain.textContent = groupMeta.has_password ? '' : '本机明文组';
+    await refreshAccounts();
+    await loadFpSlotsUi();
+    return;
+  }
+  if (route.page === 'diagnose') {
+    document.getElementById('viewDiagnose').classList.remove('hidden');
+    document.getElementById('diagGroup').textContent = route.group;
+    await loadDiagAccounts();
+    return;
+  }
+
+  // —— 3) 设置/工具/日志：别名必须在本会话组内 ——
+  currentAlias = route.alias;
+  let list;
+  try {
+    list = await api('/api/accounts');
+  } catch(e) {
+    showToast('加载账号失败', String(e), true);
+    navigate('/'+enc(route.group), true);
+    return;
+  }
+  if (list.group && list.group !== route.group) {
+    // 会话与 URL 仍不一致（不应发生）；强制回登录
+    token = ''; try { localStorage.removeItem('token'); } catch(_) {}
+    routeMsg.textContent = '会话与地址栏用户组不一致，请重新登录';
+    showToast('请重新登录', route.group, true);
+    navigate('/', true);
+    return;
+  }
+  const acc = (list.accounts||[]).find(a => a.alias === route.alias);
+  if (!acc) {
+    routeMsg.textContent = '账号「'+route.alias+'」不存在，已回退到用户组主页';
+    showToast('已回退', '账号不存在：'+route.alias);
+    navigate('/'+enc(route.group), true);
+    return;
+  }
+
+  topBar.classList.remove('hidden');
+  crumb.textContent = route.group + ' / ' + route.alias;
+  startRunPoll();
+  startConfigPoll();
+
+  if (route.page === 'settings') {
+    viewSettings.classList.remove('hidden');
+    setAlias.textContent = route.alias;
+    await openSettingsData();
+  } else if (route.page === 'tools') {
+    viewTools.classList.remove('hidden');
+    toolAlias.textContent = route.alias;
+    document.getElementById('btnWash') && (document.getElementById('btnWash').disabled = !allowTool);
+  } else if (route.page === 'logs') {
+    viewLogs.classList.remove('hidden');
+    logAlias.textContent = route.alias;
+    // 保留 goModLog 设的 module 筛选；仅从卡片历史进入时用 card
+    if (route.cardOnly) {
+      logContext = 'card';
+      logModuleFilter = null;
+    } else if (logContext !== 'module') {
+      logContext = 'all';
+      logModuleFilter = null;
+    }
+    await loadLogs();
+  }
+}
+
+/** @returns {Promise<boolean>} true=已具备该组会话 */
+async function ensureSessionForGroup(groupName, hasPassword) {
+  // 已有 token：必须确认会话组 === URL 组
+  if (token) {
+    try {
+      const accs = await api('/api/accounts');
+      if (accs.group === groupName) return true;
+      // token 属于其它组：不得用旧账号列表顶替
+    } catch(_) {
+      // token 失效
+      token = '';
+      try { localStorage.removeItem('token'); } catch(_) {}
+    }
+  }
+
+  if (!hasPassword) {
+    try {
+      const j = await api('/api/login', { method:'POST', body:{ name: groupName, password:'' }});
+      token = j.token;
+      try { localStorage.setItem('token', token); } catch(_) {}
+      return true;
+    } catch(e) {
+      routeMsg.textContent = '无法进入用户组「'+groupName+'」：'+String(e);
+      showToast('进入失败', String(e), true);
+      navigate('/', true);
+      return false;
+    }
+  }
+
+  // 加密组：必须验密（弹窗）；保留当前 URL，confirmPw 后 navigate 原 path
+  pendingGroup = groupName;
+  pwGroup.textContent = groupName;
+  const mp = document.getElementById('modalPw');
+  if (mp) mp.value = '';
+  pwModal.classList.remove('hidden');
+  pwModal.style.display = 'flex';
+  // 显示登录页背景，避免空白
+  viewLogin.classList.remove('hidden');
+  try { await loadGroups(); } catch(_) {}
+  return false;
+}
+
+let pendingGroup = '';
+let allowTool = false;
+async function refreshGates() {
+  try {
+    const j = await api('/api/gates');
+    allowDaily = !!j.allow_daily_run;
+    allowTool = !!j.allow_tool_run;
+    window.__upstream = j.upstream_compat || '';
+    // 不再占大幅横幅；仅异常时提示
+    if (!allowDaily) {
+      gateBanner.classList.remove('hidden');
+      gateBanner.className = 'banner warn';
+      gateBanner.textContent = '清日常未开放';
+    } else {
+      gateBanner.classList.add('hidden');
+      gateBanner.textContent = '';
+    }
+  } catch(e) {
+    gateBanner.classList.remove('hidden');
+    gateBanner.textContent = String(e);
+  }
+  try {
+    const h = await api('/api/health');
+    const p = h.listen_port, def = h.default_port||14103;
+    portHint.textContent = p && p!==def ? `端口 ${p}（非默认 ${def}）` : (p?`端口 ${p}`:'');
+    fillChannelSelect(h.fingerprint_channels||[]);
+    renderChannelBanner(h.fingerprint_channels||[]);
+    setConnHint('本机服务已连接 · 端口 '+(p||def), false);
+  } catch(e) {
+    setConnHint('无法连接本机服务：'+String(e)+'（请保持 RustMadoka App/exe 在运行）', true);
+  }
+}
+function fillChannelSelect(chs) {
+  const sel = document.getElementById('channel');
+  if (!sel) return;
+  // 添加账号仅 jp/en（台服不管）；组队入口不在此下拉（GROUP_RAID §8 卡片设计 · PLAN_GROUP_RAID_UI）
+  const list = (chs&&chs.length) ? chs.filter(c => c.id !== 'tw') : [
+    {id:'jp',name:'日服',in_fingerprint:true,login_ready:true,source_label:'安装包自带'},
+    {id:'en',name:'国际服',in_fingerprint:true,login_ready:true,source_label:'安装包自带'},
+  ];
+  const cur = (sel.value && sel.value !== 'tw' && sel.value !== 'group_raid') ? sel.value : 'jp';
+  sel.innerHTML = list.map(c => {
+    let label = c.name || c.id;
+    if (c.in_fingerprint) {
+      const src = c.source_label || (c.source==='embedded' ? '安装包自带' : '');
+      label += ' · 指纹'+(c.version?(' '+c.version):'')+(src?('（'+src+'）'):'');
+    } else {
+      label += ' · 未收录';
+    }
+    if (c.login_ready===false) label += ' · 登录未就绪';
+    return `<option value="${esc(c.id)}" ${c.id===cur?'selected':''}>${esc(label)}</option>`;
+  }).join('');
+}
+function renderChannelBanner(chs) {
+  const el = document.getElementById('loginChList');
+  const hint = document.getElementById('channelHint');
+  const list = chs||[];
+  const text = list.length ? list.map(c => {
+    const src = c.source_label || (c.source==='embedded' ? '安装包自带' : '');
+    const fp = c.in_fingerprint
+      ? ('✓指纹'+(c.version?(' '+c.version):'')+(src?('·'+src):''))
+      : (c.id==='tw' ? '未收录/登录待实现' : '未收录');
+    const lg = c.login_ready===false ? '' : '·可登录';
+    return `${c.name||c.id}(${fp}${lg})`;
+  }).join(' · ') : '安装包自带日服/国际服指纹；连 GitHub 可刷新更新';
+  if (el) el.textContent = '可用服务器：' + text;
+  if (hint) hint.textContent = text;
+}
+
+async function loadGroups() {
+  try {
+    const j = await api('/api/groups');
+    const list = j.groups || [];
+    groupList.innerHTML = list.length ? list.map(g => `
+      <div class="group-item" onclick="enterGroup('${esc(g.name)}', ${g.has_password})">
+        <strong>${esc(g.name)}</strong>
+        <div class="muted">${g.has_password?'有密码':'无密码·明文'} · 账号 ${g.account_count}</div>
+      </div>`).join('') : '<p class="muted">暂无用户组</p>';
+  } catch(e) {
+    groupList.innerHTML = '<p class="err">加载用户组失败：'+esc(String(e))+'</p>';
+  }
+}
+
+async function enterGroup(name, needPw) {
+  if (needPw) {
+    pendingGroup = name;
+    pwGroup.textContent = name;
+    modalPw.value = '';
+    pwModal.classList.remove('hidden');
+    pwModal.style.display = 'flex';
+    return;
+  }
+  try {
+    const j = await api('/api/login', { method:'POST', body:{ name, password:'' }});
+    token = j.token;
+    try { localStorage.setItem('token', token); } catch(_) {}
+    navigate('/'+enc(name));
+  } catch(e) { loginMsg.innerHTML = '<span class="err">'+esc(String(e))+'</span>'; }
+}
+async function confirmPw() {
+  try {
+    setConnHint('正在登录…', false);
+    const j = await api('/api/login', { method:'POST', body:{ name: pendingGroup, password: modalPw.value }});
+    token = j.token;
+    try { localStorage.setItem('token', token); } catch(_) {}
+    closePw();
+    setConnHint('登录成功', false);
+    const next = (route.page && route.page !== 'login') ? location.pathname : '/'+enc(pendingGroup);
+    navigate(next, true);
+  } catch(e) {
+    setConnHint('登录失败：'+String(e), true);
+    showToast('登录失败', String(e), true);
+  }
+}
+function closePw(){
+  const m = document.getElementById('pwModal');
+  if (!m) return;
+  m.classList.add('hidden');
+  m.style.display = 'none';
+}
+function channelBadgeHtml(ch){
+  const c = (ch||'').toLowerCase();
+  if (c==='en') return '<span class="ch-badge en" title="国际服">EN</span>';
+  if (c==='jp') return '<span class="ch-badge jp" title="日服">JP</span>';
+  if (c==='tw') return '<span class="ch-badge tw" title="台服">TW</span>';
+  const lab = (ch||'?').toUpperCase().slice(0,6);
+  return `<span class="ch-badge unk" title="渠道 ${esc(ch||'')}">${esc(lab)}</span>`;
+}
+async function goLogin(){
+  try {
+    if (token) await api('/api/logout',{method:'POST',body:{}});
+  } catch(_) {}
+  token='';
+  try { localStorage.removeItem('token'); } catch(_) {}
+  navigate('/');
+}
+
+function openChangeGroupPw(){
+  const g = currentGroup || '';
+  if (!g) { showToast('无用户组','请先进入用户组', true); return; }
+  document.getElementById('chgPwGroup').textContent = g;
+  document.getElementById('chgPwOld').value = '';
+  document.getElementById('chgPwNew').value = '';
+  document.getElementById('chgPwNew2').value = '';
+  const m = document.getElementById('chgPwModal');
+  m.classList.remove('hidden');
+  m.style.display = 'flex';
+}
+function closeChangeGroupPw(){
+  const m = document.getElementById('chgPwModal');
+  if (!m) return;
+  m.classList.add('hidden');
+  m.style.display = 'none';
+}
+async function submitChangeGroupPw(){
+  const name = currentGroup || '';
+  const old_password = document.getElementById('chgPwOld').value || '';
+  const new_password = document.getElementById('chgPwNew').value || '';
+  const n2 = document.getElementById('chgPwNew2').value || '';
+  if (new_password !== n2) {
+    showToast('两次新密码不一致', '', true);
+    return;
+  }
+  if (!confirm('确认修改用户组「'+name+'」的密码？\n成功后所有标签页须重新登录。')) return;
+  try {
+    const j = await api('/api/groups/password', {
+      method:'POST',
+      body:{ name, old_password, new_password },
+    });
+    closeChangeGroupPw();
+    try { if (token) await api('/api/logout',{method:'POST',body:{}}); } catch(_) {}
+    token = '';
+    try { localStorage.removeItem('token'); } catch(_) {}
+    showToast('密码已更新', j.message || '请重新登录');
+    // 强制回登录页（有密码则下次 enter 弹验密；明文则列表点进）
+    navigate('/', true);
+  } catch(e) {
+    showToast('改密失败', String(e), true);
+  }
+}
+
+async function createGroup() {
+  await api('/api/groups', { method:'POST', body:{ name:newGroup.value, password:newGroupPw.value }});
+  loadGroups();
+}
+
+async function refreshAccounts() {
+  const j = await api('/api/accounts');
+  plainTag.textContent = '';
+  const accs = j.accounts || [];
+  if (accs[0]) {
+    const cfg = await api('/api/accounts/'+enc(accs[0].alias)+'/config').catch(()=>({config:{}}));
+    const c = cfg.config||{};
+    homeConfirmOneClick.checked = c.confirm_one_click_home !== false && c.confirm_one_click_daily !== false;
+  }
+  cards.innerHTML = accs.map(a => {
+    const mem = (a.game_name||a.level) ? `${esc(a.game_name||'?')} Lv.${a.level||0}` : '未获取信息';
+    const ch = (a.channel||'').toLowerCase();
+    const badge = channelBadgeHtml(ch);
+    const chName = ch==='jp'?'日服':(ch==='en'?'国际服':(ch==='tw'?'台服':esc(a.channel||'未知')));
+    const twHint = ch==='tw' ? ' · 登录未就绪' : '';
+    return `<div class="card" data-alias="${esc(a.alias)}" data-channel="${esc(a.channel||'')}" data-game-id="${esc(a.game_id_hash||'')}">
+      <label style="display:flex;align-items:center;gap:6px;margin:0 0 6px;cursor:pointer;flex-wrap:wrap">
+        <input type="checkbox" class="cardPick" value="${esc(a.alias)}" style="width:auto" onchange="updateBatchBtn()" />
+        <h3 style="margin:0;display:inline">${esc(a.alias)}</h3>
+        ${badge}
+      </label>
+      <div class="muted">${chName}${twHint} · ${mem}</div>
+      <div class="card-run muted" style="min-height:1.2em;margin-top:4px" data-run-alias="${esc(a.alias)}"></div>
+      <div class="btns" style="margin-top:8px">
+        <button class="secondary" onclick="goCardLogs('${esc(a.alias)}')">历史日志</button>
+        <button class="secondary" onclick="navigate('/${enc(currentGroup)}/${enc(a.alias)}')">设置</button>
+        <button class="danger" onclick="runCardDaily('${esc(a.alias)}')" ${allowDaily?'':'disabled'}>一键清日常</button>
+        <button class="secondary" onclick="openCopyModal('${esc(a.alias)}')">复制配置</button>
+        <button class="secondary" onclick="exportClipAlias('${esc(a.alias)}')">导出设置</button>
+        <button class="danger" onclick="deleteCard('${esc(a.alias)}')">删除卡片</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">暂无游戏账号</p>';
+  updateBatchBtn();
+  updateBusyUI();
+  // 运行面板开关绑定用户组
+  const key = 'homeConsoleOn:'+(currentGroup||'');
+  const on = localStorage.getItem(key) === '1';
+  const t = document.getElementById('homeConsoleToggle');
+  if (t) t.checked = on;
+  document.getElementById('homeConsole')?.classList.toggle('hidden', !on);
+  if (on) startHomeConsolePoll(); else stopHomeConsolePoll();
+  // 主页即使关闭精简监视，仍低频刷新卡片跨组占用（MULTI_GROUP §5）
+  startHomeOccupancyPoll();
+  loadBuildVerUi();
+  wireHomeConsoleBtns();
+  refreshGroupRaidCards();
+}
+
+// —— 组队配置卡片（PLAN_GROUP_RAID_UI · 多配置 · 不在添加账号区）——
+let _grAvail = [];
+async function refreshGroupRaidCards() {
+  const host = document.getElementById('grCards');
+  if (!host) return;
+  try {
+    const j = await api('/api/group-raid/config');
+    _grAvail = j.accounts || (j.available_aliases||[]).map(a=>({alias:a,channel:''}));
+    const entries = j.entries || [];
+    if (!entries.length) {
+      host.innerHTML = '<p class="muted">暂无组队配置。点「新建组队配置」添加；需要几套就建几张卡。</p>';
+      return;
+    }
+    host.innerHTML = entries.map(e => {
+      const aliases = (e.aliases||[]).join('、') || '（未选参与号）';
+      const room = e.room_open || '未选开放范围';
+      const n = (e.aliases||[]).length;
+      const mode = n<=0 ? '未就绪' : (n===1 ? '单号·打满今日次数' : `多号互援·${n}人`);
+      // 按钮用 data-* + 委托，避免名称含引号弄坏 onclick
+      const idAttr = esc(e.id);
+      return `<div class="card card-gr" data-gr-id="${idAttr}" data-gr-name="${esc(e.name||'组队')}">
+        <h3 style="margin:0 0 6px">${esc(e.name||'组队')}<span class="gr-badge">组队</span></h3>
+        <div class="muted">模式：${esc(mode)}</div>
+        <div class="muted">参与：${esc(aliases)}</div>
+        <div class="muted">开放：${esc(room)} · 队伍：${esc(e.party||'（各号默认）')}</div>
+        <div class="muted">${e.leave_after_support?'援助后退出':'援助后结算奖励'}</div>
+        <div class="btns" style="margin-top:8px">
+          <button type="button" class="gr-btn-edit" data-gr-id="${idAttr}">设置</button>
+          <button type="button" class="gr-btn-run" data-gr-id="${idAttr}" ${allowDaily?'':'disabled'}>开始组队</button>
+          <button type="button" class="secondary gr-btn-edit" data-gr-id="${idAttr}">编辑</button>
+          <button type="button" class="danger gr-btn-del" data-gr-id="${idAttr}">删除配置</button>
+        </div>
+      </div>`;
+    }).join('');
+    host.onclick = (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+      const id = t.getAttribute('data-gr-id');
+      if (!id) return;
+      const card = t.closest('.card-gr');
+      const name = card ? (card.getAttribute('data-gr-name') || id) : id;
+      if (t.classList.contains('gr-btn-edit')) { openGrModal(id); return; }
+      if (t.classList.contains('gr-btn-run')) { runGroupRaidConfig(id, name); return; }
+      if (t.classList.contains('gr-btn-del')) { deleteGrEntry(id, name); return; }
+    };
+  } catch(e) {
+    host.innerHTML = '<p class="err">组队配置加载失败：'+esc(String(e))+'</p>';
+  }
+}
+
+function closeGrModal(){
+  const m = document.getElementById('grModal');
+  if (m) { m.classList.add('hidden'); m.style.display='none'; }
+}
+async function openGrModal(id) {
+  const m = document.getElementById('grModal');
+  if (!m) return;
+  let entry = { id:'', name:'', aliases:[], room_open:'', party:'', leave_after_support:false };
+  try {
+    const j = await api('/api/group-raid/config');
+    _grAvail = j.accounts || [];
+    if (id) {
+      const found = (j.entries||[]).find(x => x.id === id);
+      if (found) entry = found;
+    }
+  } catch(e) { showToast('加载失败', String(e), true); return; }
+  document.getElementById('grEditId').value = entry.id || '';
+  document.getElementById('grName').value = entry.name || '';
+  document.getElementById('grRoomOpen').value = entry.room_open || '';
+  document.getElementById('grParty').value = entry.party || '';
+  document.getElementById('grLeave').checked = !!entry.leave_after_support;
+  document.getElementById('grModalTitle').textContent = entry.id ? '编辑组队配置' : '新建组队配置';
+  const picked = new Set(entry.aliases||[]);
+  const list = document.getElementById('grAliasList');
+  if (!_grAvail.length) {
+    list.innerHTML = '<p class="muted">请先添加游戏账号卡片</p>';
+  } else {
+    list.innerHTML = _grAvail.map(a => {
+      const al = a.alias || a;
+      const ch = a.channel || '';
+      return `<label><input type="checkbox" class="grPick" value="${esc(al)}" ${picked.has(al)?'checked':''}/> ${esc(al)} <span class="muted">${esc(ch)}</span></label>`;
+    }).join('');
+  }
+  m.classList.remove('hidden');
+  m.style.display = 'flex';
+}
+async function saveGrEntry() {
+  const id = document.getElementById('grEditId').value.trim();
+  const name = document.getElementById('grName').value.trim() || '组队配置';
+  const room_open = document.getElementById('grRoomOpen').value;
+  const party = document.getElementById('grParty').value.trim();
+  const leave_after_support = document.getElementById('grLeave').checked;
+  const aliases = [...document.querySelectorAll('.grPick:checked')].map(el => el.value);
+  if (!aliases.length) {
+    showToast('请勾选参与账号', '至少选 1 张游戏账号卡', true);
+    return;
+  }
+  if (aliases.length >= 2 && (!room_open || room_open === 'self')) {
+    showToast('开放范围无效', '多号组队请选工会/好友/全体（不能「仅自己」）', true);
+    return;
+  }
+  try {
+    await api('/api/group-raid/entry', {
+      method: 'POST',
+      body: { id, name, aliases, room_open, party, leave_after_support },
+    });
+    showToast('已保存', name);
+    closeGrModal();
+    refreshGroupRaidCards();
+  } catch(e) { showToast('保存失败', String(e), true); }
+}
+async function deleteGrEntry(id, name) {
+  if (!confirm('删除组队配置「'+(name||id)+'」？\n不会删除游戏账号卡片。')) return;
+  try {
+    // query id 兜底（部分环境 DELETE 丢 body）
+    await api('/api/group-raid/entry?id='+enc(id), { method:'DELETE', body:{ id } });
+    showToast('已删除配置', name||id);
+    refreshGroupRaidCards();
+  } catch(e) { showToast('删除失败', String(e), true); }
+}
+async function runGroupRaidConfig(id, name) {
+  if (!allowDaily) {
+    showToast('当前禁止跑任务', '日常门禁关闭', true);
+    return;
+  }
+  if (!confirm('开始组队「'+(name||id)+'」？\n将按该卡参与名单开跑（删卡已自动降级）。')) return;
+  try {
+    showToast('组队已提交', name||id);
+    // 组队可能多轮·多号，超时放宽（与一键日常同量级）
+    const j = await api('/api/group-raid', {
+      method:'POST',
+      body:{ config_id: id },
+      timeoutMs: 30 * 60 * 1000,
+    });
+    const msg = j.message || (j.ok ? '完成' : '结束');
+    showToast(j.ok ? '组队结束' : '组队有问题', msg, !j.ok);
+    if (j.logs && j.logs.length) {
+      const pre = document.getElementById('logOut');
+      if (pre) { pre.classList.remove('hidden'); pre.textContent = (j.logs||[]).join('\n'); }
+    }
+    refreshGroupRaidCards();
+  } catch(e) { showToast('组队失败', String(e), true); }
+}
+
+/** 主页卡片占用轮询（不依赖主页监视开关；关闭监视时 2s 一次） */
+let homeOccPoll = null;
+function startHomeOccupancyPoll(){
+  stopHomeOccupancyPoll();
+  const tick = async ()=>{
+    // 监视开时由 homeConsole 已刷新，避免双倍请求
+    if (homeConsolePoll) return;
+    try {
+      const j = await api('/api/run/status');
+      const runs = j.runs_all || j.runs || [];
+      paintRunsToCards(runs);
+      updateBusyUI({ runs, runs_all: runs, busy_any: j.busy_any });
+    } catch(_){}
+  };
+  tick();
+  homeOccPoll = setInterval(tick, 2000);
+}
+function stopHomeOccupancyPoll(){ if (homeOccPoll) clearInterval(homeOccPoll); homeOccPoll=null; }
+
+async function deleteCard(alias) {
+  if (!confirm('确认删除游戏账号卡片「'+alias+'」？\n不会自动删除 token 缓存文件。')) return;
+  if (!confirm('再次确认：删除「'+alias+'」？')) return;
+  try {
+    await api('/api/accounts/'+enc(alias), { method:'DELETE' });
+    showToast('已删除', alias);
+    refreshAccounts();
+  } catch(e) { showToast('删除失败', String(e), true); }
+}
+
+let copyFrom = '';
+async function openCopyModal(from) {
+  copyFrom = from;
+  const j = await api('/api/accounts');
+  const others = (j.accounts||[]).filter(a => a.alias !== from);
+  if (!others.length) {
+    alert('当前用户组仅有一张卡片，请先新建游戏账号再复制配置。\n（复制的是设置开关等，不含引继码/游戏密码）');
+    return;
+  }
+  copyList.innerHTML = others.map(a =>
+    `<button type="button" style="margin-top:6px" onclick="doCopyTo('${esc(a.alias)}')">复制到：${esc(a.alias)}</button>`
+  ).join('');
+  copyModal.classList.remove('hidden');
+  copyModal.style.display = 'flex';
+}
+function closeCopy(){ copyModal.classList.add('hidden'); copyModal.style.display='none'; }
+async function doCopyTo(to) {
+  try {
+    await api('/api/accounts/'+enc(copyFrom)+'/copy_config', { method:'POST', body:{ to }});
+    showToast('已复制设置', copyFrom+' → '+to+'（无凭证）');
+    closeCopy();
+  } catch(e) { showToast('复制失败', String(e), true); }
+}
+
+async function exportClipAlias(alias) {
+  try {
+    const j = await api('/api/accounts/'+enc(alias)+'/export_settings');
+    const text = typeof j.text === 'string' ? j.text : JSON.stringify(j.payload||j, null, 2);
+    await navigator.clipboard.writeText(text);
+    showToast('已复制到剪贴板', '设置 JSON（无密码）');
+  } catch(e) { showToast('导出失败', String(e), true); }
+}
+async function exportClip(){ return exportClipAlias(currentAlias); }
+async function importClip(){
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) { showToast('剪贴板为空','',true); return; }
+    if (!confirm('用剪贴板内容覆盖当前卡片设置？\n不会改写引继码/游戏密码。')) return;
+    await api('/api/accounts/'+enc(currentAlias)+'/import_settings', { method:'POST', body:{ text }});
+    showToast('已导入设置');
+    openSettingsData();
+  } catch(e) { showToast('导入失败', String(e), true); }
+}
+
+async function loadVersionPanel() {
+  try {
+    const j = await api('/api/version');
+    const localTxt = '本地 build_stamp=' + (j.local?.build_stamp||'?') + ' · cargo=' + (j.local?.cargo_version||'');
+    const checkTxt = '每日检查日：' + (j.last_version_check_day||'从未') + ' · 今日=' + (j.today||'') +
+      (j.need_daily_check ? ' · 需要自动检查' : ' · 今日已检查') +
+      ' · 默认源 ' + (j.default_fp_url||'');
+    if (document.getElementById('verLocal')) verLocal.textContent = localTxt;
+    if (document.getElementById('verCheckMeta')) verCheckMeta.textContent = checkTxt;
+    if (document.getElementById('loginVerLocal')) loginVerLocal.textContent = localTxt + ' · ' + checkTxt;
+    renderSources(j.sources||[]);
+    fillChannelSelect(j.fingerprint_channels||[]);
+    renderChannelBanner(j.fingerprint_channels||[]);
+    if (j.need_daily_check) {
+      await runVersionCheck(true);
+    } else if (j.last_version_check && j.last_version_check.popup_hints && document.getElementById('verHints')) {
+      verHints.textContent = (j.last_version_check.popup_hints||[]).join(' ');
+    }
+  } catch(e) {
+    if (document.getElementById('verLocal')) verLocal.textContent = '版本面板加载失败: ' + e;
+  }
+}
+function renderSources(sources) {
+  const html = (sources||[]).map(s => {
+    const cls = s.last_test_ok===false ? 'bad' : (s.last_test_ok===true ? 'ok' : '') + (s.builtin?' builtin':'');
+    const testMsg = s.last_test_message ? esc(s.last_test_message) : '未测试';
+    const en = s.enabled !== false;
+    return `<div class="src-item ${cls}">
+      <div><strong>${esc(s.name)}</strong> ${s.builtin?'<span class="muted">[内置]</span>':''}
+        <span class="muted">· ${esc(s.kind)}</span></div>
+      <div class="muted" style="word-break:break-all">${esc(s.url)}</div>
+      <div class="muted">测试：${s.last_test_ok===true?'✓':(s.last_test_ok===false?'✗':'?')} ${testMsg}
+        ${s.last_test_at? ' · '+esc(s.last_test_at):''}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        <button type="button" class="secondary tiny" onclick="testSource('${esc(s.id)}')">测试</button>
+        ${s.builtin ? '' : `<button type="button" class="danger tiny" onclick="deleteSource('${esc(s.id)}')">删除</button>`}
+        <button type="button" class="secondary tiny" onclick="toggleSourceEnabled('${esc(s.id)}', ${!en})">${en?'禁用':'启用'}</button>
+        ${s.kind==='fingerprint'?`<button type="button" class="tiny" onclick="applySourceFp('${esc(s.id)}', ${!!s.builtin})">用作本地指纹</button>`:''}
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">无信息源</p>';
+  if (document.getElementById('srcList')) srcList.innerHTML = html;
+  if (document.getElementById('loginSrcList')) loginSrcList.innerHTML = html;
+}
+async function runVersionCheck(auto) {
+  try {
+    const j = await api('/api/version/check', { method:'POST', body:{} });
+    const hints = j.popup_hints || j.check?.popup_hints || [];
+    verHints.textContent = hints.join(' ');
+    if (hints.length) {
+      // 弹窗提示（不抢输入焦点用 alert 一次汇总）
+      alert((auto?'【每日自动版本检查】\n':'【版本检查】\n') + hints.join('\n'));
+    }
+    showToast(auto?'每日版本检查完成':'检查完成', hints[0]||'');
+    loadVersionPanelQuiet();
+  } catch(e) {
+    showToast('版本检查失败', String(e), true);
+    if (auto) alert('每日自动版本检查失败：\n' + e);
+  }
+}
+async function loadVersionPanelQuiet() {
+  try {
+    const j = await api('/api/version');
+    verLocal.textContent = '本地 build_stamp=' + (j.local?.build_stamp||'?') + ' · cargo=' + (j.local?.cargo_version||'');
+    verCheckMeta.textContent = '每日检查日：' + (j.last_version_check_day||'从未') + ' · 今日=' + (j.today||'');
+    renderSources(j.sources||[]);
+    const hints = j.last_version_check?.popup_hints || j.last_version_check?.apply_message;
+    if (Array.isArray(j.last_version_check?.results)) {
+      /* keep verHints from last check */
+    }
+  } catch(_) {}
+}
+async function fetchRemoteVersion() {
+  try {
+    const j = await api('/api/version/fetch', { method:'POST', body:{} });
+    showToast('已拉取默认源', j.url||'');
+    alert('已从默认源拉取：\n' + (j.url||'') + '\n本地指纹缓存可能已更新。');
+    loadVersionPanelQuiet();
+  } catch(e) { showToast('拉取失败', String(e), true); alert('拉取失败：\n'+e); }
+}
+async function addInfoSource() {
+  const url = (document.getElementById('customSourceUrl')?.value||'').trim();
+  if (!url) return;
+  try {
+    const j = await api('/api/version/sources/add', { method:'POST', body:{
+      name: (document.getElementById('customSourceName')?.value)||'自定义',
+      url,
+      kind: (document.getElementById('customSourceKind')?.value)||'fingerprint'
+    }});
+    showToast('已添加', j.message||url);
+    if (document.getElementById('customSourceUrl')) customSourceUrl.value = '';
+    loadVersionPanelQuiet();
+  } catch(e) { showToast('添加失败', String(e), true); alert('添加失败：\n'+e); }
+}
+async function addInfoSourceLogin() {
+  const url = (document.getElementById('loginCustomUrl')?.value||'').trim();
+  if (!url) return;
+  try {
+    await api('/api/version/sources/add', { method:'POST', body:{
+      name: (document.getElementById('loginCustomName')?.value)||'自定义', url, kind:'fingerprint'
+    }});
+    showToast('已添加源');
+    loginCustomUrl.value = '';
+    loadVersionPanelQuiet();
+  } catch(e) { alert('添加失败：\n'+e); }
+}
+async function pasteVersionLogin() {
+  await api('/api/version/paste', { method:'POST', body:{ text: loginPasteVer.value }});
+  showToast('已应用粘贴');
+  loadVersionPanelQuiet();
+}
+async function deleteSource(id) {
+  if (!confirm('确认删除该信息源？')) return;
+  await api('/api/version/sources/delete', { method:'POST', body:{ id }});
+  showToast('已删除');
+  loadVersionPanelQuiet();
+}
+async function testSource(id) {
+  try {
+    const j = await api('/api/version/sources/test', { method:'POST', body:{ id }});
+    alert((j.ok?'测试通过：':'测试失败：') + (j.message||''));
+    loadVersionPanelQuiet();
+  } catch(e) { alert('测试失败：\n'+e); }
+}
+async function toggleSourceEnabled(id, enabled) {
+  const j = await api('/api/version');
+  const sources = (j.sources||[]).map(s => s.id===id ? {...s, enabled} : s);
+  await api('/api/version/sources', { method:'POST', body:{ sources }});
+  loadVersionPanelQuiet();
+}
+async function applySourceFp(id, isBuiltin) {
+  let force = false;
+  if (!isBuiltin) {
+    if (!confirm('该源不是默认 GitHub 源。\n仅当其游戏版本新于默认源时建议覆盖。\n\n确认强制用作本地指纹？')) return;
+    force = true;
+  }
+  const j = await api('/api/version/check', { method:'POST', body:{
+    apply_source_id: id, force_overwrite_default: force
+  }});
+  const hints = j.popup_hints || [];
+  alert(hints.join('\n') || j.check?.apply_message || '完成');
+  loadVersionPanelQuiet();
+}
+async function pasteVersion() {
+  await api('/api/version/paste', { method:'POST', body:{ text: pasteVer.value }});
+  showToast('已应用粘贴');
+  alert('已应用粘贴内容（若为指纹 JSON 已尝试写入缓存）。');
+  loadVersionPanelQuiet();
+}
+
+async function addAccount() {
+  await api('/api/accounts', { method:'POST', body:{ alias:alias.value, username:mig.value, password:gpw.value, channel:channel.value }});
+  refreshAccounts();
+}
+// 组队 UI：不在「添加账号」类型下拉里。多配置借用卡片设计 — 见 PLAN_GROUP_RAID_UI（待实现，勿在本文件抢跑半成品面板）
+async function saveHomeConfirm() {
+  const accs = (await api('/api/accounts')).accounts||[];
+  let v = homeConfirmOneClick.checked;
+  if (!v) {
+    if (!confirm('确认关闭「主页一键清日常二次确认」？')) { homeConfirmOneClick.checked = true; return; }
+  }
+  for (const a of accs) {
+    await api('/api/accounts/'+enc(a.alias)+'/config', { method:'POST', body:{ config:{ confirm_one_click_home: v }}});
+  }
+  showToast('已保存', '主页一键确认='+(v?'开':'关'));
+}
+async function saveSettingsConfirm() {
+  let v = setConfirmOneClick.checked;
+  if (!v) {
+    if (!confirm('确认关闭「设置页一键清日常二次确认」？')) { setConfirmOneClick.checked = true; return; }
+  }
+  await api('/api/accounts/'+enc(currentAlias)+'/config/auto', {
+    method:'POST',
+    body: { patch: { confirm_one_click_settings: v }, changes: [{ key:'confirm_one_click_settings', label:'设置页一键确认', after: v }] }
+  });
+  setState.config.confirm_one_click_settings = v;
+  showToast('已保存', '设置页一键确认='+(v?'开':'关'));
+}
+
+function goCardLogs(a) {
+  logContext = 'card';
+  navigate('/'+enc(currentGroup)+'/'+enc(a)+'/日志');
+}
+function goLogs(){ logContext='all'; navigate('/'+enc(currentGroup)+'/'+enc(currentAlias)+'/日志'); }
+function goTools(){ navigate('/'+enc(currentGroup)+'/'+enc(currentAlias)+'/工具'); }
+function backFromLogs(){
+  if (logContext==='card') navigate('/'+enc(currentGroup));
+  else navigate('/'+enc(currentGroup)+'/'+enc(currentAlias));
+}
+
+async function openSettingsData() {
+  const j = await api('/api/accounts/'+enc(currentAlias)+'/config');
+  modulesMeta = j.modules||[];
+  currentChannel = (j.channel || 'en').toLowerCase();
+  (j.low_risk||[]).forEach(k => LOW_RISK.add(k));
+  const stored = j.config||{};
+  setState.enabled = {}; setState.config = {}; setState.expanded = {};
+  for (const m of modulesMeta) {
+    setState.enabled[m.key] = typeof stored[m.key]==='boolean' ? stored[m.key] : !!m.default_enabled;
+    setState.expanded[m.key] = false;
+    for (const f of (m.config||[])) {
+      setState.config[f.key] = stored[f.key] !== undefined ? stored[f.key] : f.default;
+    }
+    const ck = 'confirm_'+m.key;
+    setState.config[ck] = stored[ck] !== undefined ? stored[ck] : !LOW_RISK.has(m.key);
+  }
+  setState.config.confirm_one_click_settings =
+    stored.confirm_one_click_settings !== undefined
+      ? !!stored.confirm_one_click_settings
+      : (stored.confirm_one_click_daily !== false);
+  setState.config.confirm_one_click_home =
+    stored.confirm_one_click_home !== undefined
+      ? !!stored.confirm_one_click_home
+      : (stored.confirm_one_click_daily !== false);
+  setState.config.log_auto_clean = !!stored.log_auto_clean;
+  setState.config.log_keep_one_click = stored.log_keep_one_click ?? 100;
+  if (document.getElementById('setConfirmOneClick'))
+    setConfirmOneClick.checked = setState.config.confirm_one_click_settings !== false;
+  configSig = configSignature(stored);
+  await loadPartiesCache();
+  renderMods();
+  btnOneClick.disabled = !allowDaily;
+  loadBuildVerUi();
+  startConfigPoll();
+}
+
+function renderMods() {
+  // 布局：上行标题（勾选+名称）· 下行三键（展开/运行/日志）— 手机不挤竖字
+  modList.innerHTML = modulesMeta.map(m => {
+    const on = !!setState.enabled[m.key];
+    const exp = !!setState.expanded[m.key];
+    const heavy = m.resource_heavy ? '<span class="warn"> 耗资源</span>' : '';
+    const conf = !!setState.config['confirm_'+m.key];
+    const shopScope = m.key==='event_shop'?'SHOPe':(m.key==='raid_shop'?'SHOPr':(m.key==='arena_shop'?'SHOPa':''));
+    const shopBar = (exp && shopScope) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button type="button" class="tiny" onclick="exportShopPack('${shopScope}')">导出本店短码</button>
+        <button type="button" class="tiny" onclick="importShopPack('${shopScope}')">导入本店短码</button>
+      </div>` : '';
+    const fields = (m.config||[]).map(f => {
+      const val = setState.config[f.key];
+      if (f.config_type==='bool') return `<label class="check-line"><input type="checkbox" data-cfg-key="${esc(f.key)}" ${val?'checked':''} onchange="qCfg('${esc(f.key)}',this.checked,'${esc(f.desc)}')" /> ${esc(f.desc)}</label>`;
+      if (f.config_type==='int') return `<label>${esc(f.desc)}</label><input type="number" data-cfg-key="${esc(f.key)}" value="${esc(val??0)}" oninput="qCfg('${esc(f.key)}',Number(this.value),'${esc(f.desc)}')" />`;
+      // PARTY-SELECT：圆点「列表选择 / 自行输入」· PLAN_PARTY_SELECT_UX · MULTI_GROUP §8
+      if (f.config_type==='party') return renderPartyField(f, val);
+      // 关卡 ID：旁路名称解析（mst quest-stages 缓存 / 账号接口）
+      if (f.key === 'force_battle_quest_id') {
+        return `<label>${esc(f.desc)}</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="text" data-cfg-key="${esc(f.key)}" value="${esc(val??'')}" style="flex:1;min-width:120px"
+              oninput="qCfg('${esc(f.key)}',this.value,'${esc(f.desc)}'); scheduleQuestStageResolve(this.value)" />
+            <button type="button" class="tiny secondary" onclick="resolveQuestStageUi()">查名称</button>
+          </div>
+          <div class="muted" id="questStageNameHint" style="margin-top:4px">输入关卡数字 ID 后可解析中文/日文名称（本地缓存或登录拉取）</div>
+          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+            <input type="text" id="questStageFilterBox" placeholder="名称关键字 如 キオク" style="flex:1;min-width:140px" />
+            <button type="button" class="tiny secondary" onclick="searchQuestStagesUi()">按名搜索</button>
+          </div>
+          <pre id="questStageSearchOut" class="muted" style="margin-top:6px;max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px"></pre>`;
+      }
+      return `<label>${esc(f.desc)}</label><input type="text" data-cfg-key="${esc(f.key)}" value="${esc(val??'')}" oninput="qCfg('${esc(f.key)}',this.value,'${esc(f.desc)}')" />`;
+    }).join('');
+    return `<div class="mod">
+      <div class="mod-title-row">
+        <input type="checkbox" data-mod-enable="${esc(m.key)}" ${on?'checked':''} onchange="togEnable('${esc(m.key)}',this.checked,'${esc(m.name)}')" />
+        <div class="mod-title-text">
+          <strong>${esc(m.name)}</strong>${heavy}
+          <div class="muted">${esc(m.key)}</div>
+        </div>
+      </div>
+      <div class="mod-actions">
+        <button type="button" class="tiny btn-fold ${exp?'is-open':''}" onclick="togExp('${esc(m.key)}')">${exp?'收起':'展开'}</button>
+        <button type="button" class="tiny" onclick="runOneMod('${esc(m.key)}','${esc(m.name)}')" ${(!allowDaily && m.key!=='info')?'disabled':''}>运行</button>
+        <button type="button" class="secondary tiny" onclick="goModLog('${esc(m.key)}','${esc(m.name)}')">本功能日志</button>
+      </div>
+      ${exp?`<div class="mod-fields">${shopBar}${fields}
+        <label class="check-line"><input type="checkbox" data-cfg-key="confirm_${esc(m.key)}" ${conf?'checked':''} onchange="togConfirm('${esc(m.key)}',this.checked)" /> 执行前二次确认</label>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+function toggleIoFold(){
+  const el = document.getElementById('ioFold');
+  const btn = document.getElementById('btnIoFold');
+  if (!el) return;
+  const open = el.classList.toggle('hidden') === false;
+  if (btn) {
+    btn.textContent = open ? '收起导入导出' : '展开导入导出';
+    btn.classList.toggle('btn-fold', true);
+    btn.classList.toggle('is-open', open);
+  }
+}
+
+function togEnable(k,on,name){ setState.enabled[k]=on; queueChange(k,on,name); }
+function togExp(k){ setState.expanded[k]=!setState.expanded[k]; renderMods(); }
+function qCfg(k,v,label){ setState.config[k]=v; queueChange(k,v,label); }
+
+/** 关卡 ID↔名称（P23 网页面对齐 CLI mst quest-stages） */
+let _questResolveTimer = null;
+function scheduleQuestStageResolve(raw){
+  if (_questResolveTimer) clearTimeout(_questResolveTimer);
+  _questResolveTimer = setTimeout(() => resolveQuestStageUi(raw), 400);
+}
+async function resolveQuestStageUi(raw){
+  const hint = document.getElementById('questStageNameHint');
+  const idStr = (raw != null ? String(raw) : String(setState.config.force_battle_quest_id || '')).trim();
+  if (!hint) return;
+  if (!/^\d+$/.test(idStr)) {
+    hint.textContent = '请输入纯数字关卡 ID（如 401101=キオク Rank1，411102=能力晶花 Normal）';
+    return;
+  }
+  hint.textContent = '查询中…';
+  try {
+    let j = null;
+    if (currentAlias) {
+      j = await api('/api/accounts/'+enc(currentAlias)+'/mst/quest-stages?id='+enc(idStr)+'&limit=1');
+    }
+    if ((!j || !j.stages || !j.stages.length) && currentChannel) {
+      j = await api('/api/mst/quest-stages?channel='+enc(currentChannel||'en')+'&id='+enc(idStr)+'&limit=1');
+    }
+    const row = j && j.stages && j.stages[0];
+    if (!row) {
+      hint.textContent = '未找到 ID='+idStr+'（可先 CLI mst quest-stages -g … -a … --refresh，或点「按名搜索」）';
+      return;
+    }
+    hint.textContent = 'ID '+row.questStageMstId+' · 组 '+row.questGroupMstId+' · 耗体 '+row.useStamina+' · '+ (row.name||'');
+  } catch (e) {
+    hint.textContent = '查询失败：'+(e.message||e);
+  }
+}
+async function searchQuestStagesUi(){
+  const box = document.getElementById('questStageFilterBox');
+  const out = document.getElementById('questStageSearchOut');
+  if (!out) return;
+  const q = (box && box.value || '').trim();
+  if (!q) { out.textContent = '请输入名称关键字'; return; }
+  out.textContent = '搜索中…';
+  try {
+    let j = null;
+    if (currentAlias) {
+      j = await api('/api/accounts/'+enc(currentAlias)+'/mst/quest-stages?filter='+enc(q)+'&limit=30');
+    }
+    if ((!j || !j.stages || !j.stages.length)) {
+      j = await api('/api/mst/quest-stages?channel='+enc(currentChannel||'en')+'&filter='+enc(q)+'&limit=30');
+    }
+    const rows = (j && j.stages) || [];
+    if (!rows.length) { out.textContent = '无匹配（source='+(j&&j.source)+'）'; return; }
+    out.textContent = rows.map(r => r.questStageMstId+'\t组'+r.questGroupMstId+'\t耗体'+r.useStamina+'\t'+(r.name||'')).join('\n');
+  } catch (e) {
+    out.textContent = '搜索失败：'+(e.message||e);
+  }
+}
+
+/** PARTY-SELECT 队伍字段 UI（圆点二选一） */
+let partyCache = { parties: [], fetched_at: null, loading: false };
+function partyModeKey(fieldKey){ return 'partyMode:'+fieldKey; }
+function getPartyMode(fieldKey){
+  try {
+    const v = localStorage.getItem(partyModeKey(fieldKey)+':'+(currentAlias||''));
+    return v === 'list' ? 'list' : 'manual';
+  } catch(_){ return 'manual'; }
+}
+function setPartyMode(fieldKey, mode){
+  try { localStorage.setItem(partyModeKey(fieldKey)+':'+(currentAlias||''), mode); } catch(_){}
+  renderMods();
+}
+function renderPartyField(f, val){
+  const mode = getPartyMode(f.key);
+  const parties = partyCache.parties || [];
+  const opts = parties.map(p => {
+    const id = String(p.partyDataId ?? '');
+    const lab = p.label || (`序号${p.partyIndex} · ${p.name||'?'} · id=${id}`);
+    const sel = String(val??'') === id || String(val??'') === String(p.name||'') ? 'selected' : '';
+    return `<option value="${esc(id)}" ${sel}>${esc(lab)}</option>`;
+  }).join('');
+  const listBlock = mode==='list' ? `
+    <select data-cfg-key="${esc(f.key)}" onchange="qCfg('${esc(f.key)}',this.value,'${esc(f.desc)}')">
+      <option value="">（请选择队伍）</option>
+      ${opts || '<option value="" disabled>无缓存队伍 — 请刷新</option>'}
+    </select>
+    <button type="button" class="tiny secondary" style="margin-top:6px" onclick="refreshPartiesUi()">刷新队伍列表</button>
+    <div class="muted" style="margin-top:4px">${partyCache.fetched_at ? ('缓存：'+esc(String(partyCache.fetched_at))) : '尚无缓存；需完整登录拉取 partyDataList'}</div>
+  ` : `
+    <input type="text" data-cfg-key="${esc(f.key)}" value="${esc(val??'')}" placeholder="名称 / 编成序号 / partyDataId" oninput="qCfg('${esc(f.key)}',this.value,'${esc(f.desc)}')" />
+  `;
+  return `<div class="party-field" style="margin:8px 0;padding:8px;border:1px solid #334155;border-radius:8px">
+    <label>${esc(f.desc)}</label>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0;align-items:center">
+      <label class="check-line" style="min-height:auto"><input type="radio" name="pm_${esc(f.key)}" ${mode==='list'?'checked':''} onchange="setPartyMode('${esc(f.key)}','list')" /> 列表选择</label>
+      <label class="check-line" style="min-height:auto"><input type="radio" name="pm_${esc(f.key)}" ${mode==='manual'?'checked':''} onchange="setPartyMode('${esc(f.key)}','manual')" /> 自行输入</label>
+    </div>
+    ${listBlock}
+  </div>`;
+}
+async function loadPartiesCache(){
+  if (!currentAlias) return;
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/parties');
+    partyCache.parties = j.parties || [];
+    partyCache.fetched_at = j.fetched_at || null;
+  } catch(_){ partyCache.parties = []; }
+}
+async function refreshPartiesUi(){
+  if (!currentAlias) return;
+  if (partyCache.loading) return;
+  partyCache.loading = true;
+  showToast('拉取队伍','完整登录中…');
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/parties/refresh',{method:'POST',body:{}});
+    partyCache.parties = j.parties || [];
+    partyCache.fetched_at = j.fetched_at || new Date().toISOString();
+    showToast('队伍已更新', (j.party_count||0)+' 条 · '+(j.note||''));
+    renderMods();
+  } catch(e){ showToast('刷新失败', String(e), true); }
+  finally { partyCache.loading = false; }
+}
+function togConfirm(k,on){
+  if (!on) { if (!confirm('确认关闭「'+k+'」的二次确认？')) { renderMods(); return; } }
+  setState.config['confirm_'+k]=on; queueChange('confirm_'+k,on,'二次确认');
+}
+function queueChange(k, after, label) {
+  pendingPatch[k]=after; pendingChanges[k]={key:k,label:label||k,after};
+  saveHint.textContent='保存中…';
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer=setTimeout(flushSave, 380);
+}
+async function flushSave(){
+  if (!Object.keys(pendingPatch).length) return;
+  if (saving) return;
+  const patch={...pendingPatch}, changes=Object.values(pendingChanges);
+  pendingPatch={}; pendingChanges={};
+  saving = true;
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/config/auto',{method:'POST',body:{patch,changes}});
+    // 后端返回完整 config：以服务端为准，多窗口一致
+    if (j.config && typeof j.config === 'object') {
+      applyServerConfig(j.config, false);
+      configSig = configSignature(j.config);
+    }
+    saveHint.textContent = j.message||'已保存';
+    showToast(j.message||'配置保存成功', changes.map(c=>c.label+'：'+c.after).join('\n'));
+  } catch(e){ saveHint.textContent='失败 '+e; showToast('保存失败',String(e),true); }
+  finally { saving = false; }
+}
+/** 配置签名：多窗口轮询比对 */
+function configSignature(conf) {
+  try { return JSON.stringify(conf||{}); } catch { return ''; }
+}
+/**
+ * 将服务端 config 灌入 setState。
+ * 同步时禁止整表 destroy/rebuild 导致输入框失焦（主人 2026-08-07 反馈）。
+ * reRender=true 仅在「无焦点在设置表单内」时整表渲染；有焦点则原地改值。
+ */
+function applyServerConfig(stored, reRender) {
+  if (!stored || typeof stored !== 'object') return;
+  for (const m of modulesMeta) {
+    if (typeof stored[m.key]==='boolean') setState.enabled[m.key] = stored[m.key];
+    for (const f of (m.config||[])) {
+      if (stored[f.key] !== undefined) setState.config[f.key] = stored[f.key];
+    }
+    const ck = 'confirm_'+m.key;
+    if (stored[ck] !== undefined) setState.config[ck] = stored[ck];
+  }
+  if (stored.confirm_one_click_settings !== undefined)
+    setState.config.confirm_one_click_settings = !!stored.confirm_one_click_settings;
+  if (stored.confirm_one_click_home !== undefined)
+    setState.config.confirm_one_click_home = !!stored.confirm_one_click_home;
+  if (stored.log_auto_clean !== undefined) setState.config.log_auto_clean = !!stored.log_auto_clean;
+  if (document.getElementById('setConfirmOneClick'))
+    setConfirmOneClick.checked = setState.config.confirm_one_click_settings !== false;
+  if (reRender === false) return;
+  // 正在编辑：禁止 renderMods 拆掉当前输入框
+  if (isSettingsFormFocused()) {
+    patchSettingsDomFromState();
+    return;
+  }
+  renderModsPreservingFocus();
+}
+/** 光标是否在设置模块表单内（含展开区输入） */
+function isSettingsFormFocused(){
+  const ae = document.activeElement;
+  if (!ae) return false;
+  const list = document.getElementById('modList');
+  if (list && list.contains(ae) && (ae.tagName==='INPUT'||ae.tagName==='SELECT'||ae.tagName==='TEXTAREA'))
+    return true;
+  return false;
+}
+/** 不重建 DOM：仅同步 checkbox/number/text 显示值（跳过正在聚焦的控件） */
+function patchSettingsDomFromState(){
+  const list = document.getElementById('modList');
+  if (!list) return;
+  const ae = document.activeElement;
+  list.querySelectorAll('input[type=checkbox]').forEach(inp => {
+    if (inp === ae) return;
+    // 模块开关在 title 行；配置 bool 在 fields
+  });
+  // 以 data-cfg-key 标记的字段为准（renderMods 写入）
+  list.querySelectorAll('[data-cfg-key]').forEach(el => {
+    if (el === ae) return;
+    const k = el.getAttribute('data-cfg-key');
+    if (!k) return;
+    const v = setState.config[k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (el.type === 'number') el.value = (v===undefined||v===null) ? '' : String(v);
+    else if (el.tagName === 'SELECT') {
+      const s = String(v??'');
+      if ([...el.options].some(o=>o.value===s)) el.value = s;
+    } else el.value = (v===undefined||v===null) ? '' : String(v);
+  });
+  list.querySelectorAll('[data-mod-enable]').forEach(el => {
+    if (el === ae) return;
+    const k = el.getAttribute('data-mod-enable');
+    el.checked = !!setState.enabled[k];
+  });
+}
+function renderModsPreservingFocus(){
+  const ae = document.activeElement;
+  let focusKey = null, focusSel = null, isCheck = false;
+  if (ae && ae.getAttribute) {
+    focusKey = ae.getAttribute('data-cfg-key') || ae.getAttribute('data-mod-enable');
+    if (ae.selectionStart != null) focusSel = ae.selectionStart;
+    isCheck = ae.type === 'checkbox';
+  }
+  renderMods();
+  if (!focusKey) return;
+  const list = document.getElementById('modList');
+  if (!list) return;
+  const el = list.querySelector(`[data-cfg-key="${CSS.escape(focusKey)}"],[data-mod-enable="${CSS.escape(focusKey)}"]`);
+  if (!el) return;
+  try {
+    el.focus();
+    if (!isCheck && focusSel != null && el.setSelectionRange) {
+      const n = String(el.value||'').length;
+      el.setSelectionRange(Math.min(focusSel,n), Math.min(focusSel,n));
+    }
+  } catch(_){}
+}
+let configPoll = null;
+let configSig = '';
+let lastNotifyId = '';
+function startConfigPoll() {
+  stopConfigPoll();
+  // 多窗口同步：约 2s；本地有未保存 patch 时跳过。
+  // 禁止在输入中途整表重绘（失焦问题）。
+  configPoll = setInterval(async () => {
+    if (!currentAlias) return;
+    try {
+      if (route.page === 'settings' && !Object.keys(pendingPatch).length && !saving) {
+        const j = await api('/api/accounts/'+enc(currentAlias)+'/config');
+        const conf = j.config||{};
+        const sig = configSignature(conf);
+        if (sig && sig !== configSig) {
+          configSig = sig;
+          // 同步时 prefer 不抢焦点
+          applyServerConfig(conf, true);
+          if (saveHint && !isSettingsFormFocused()) saveHint.textContent = '已与其它窗口同步';
+        }
+      }
+      const nq = '/api/features/settings/notifications?alias='+enc(currentAlias)+'&limit=5';
+      const nj = await api(nq).catch(()=>null);
+      const ents = (nj && nj.entries) || [];
+      if (ents.length && ents[0].id && ents[0].id !== lastNotifyId) {
+        if (lastNotifyId) {
+          // toast 不抢焦点（已有 pointer-events:none）
+          showToast(ents[0].title||'设置已更新', ents[0].message||'其它窗口已保存配置');
+          if (route.page === 'settings' && !Object.keys(pendingPatch).length && !saving) {
+            const j2 = await api('/api/accounts/'+enc(currentAlias)+'/config');
+            applyServerConfig(j2.config||{}, true);
+            configSig = configSignature(j2.config||{});
+          }
+        }
+        lastNotifyId = ents[0].id;
+      } else if (ents.length && !lastNotifyId) {
+        lastNotifyId = ents[0].id;
+      }
+    } catch(_) {}
+  }, 2000);
+}
+function stopConfigPoll(){ if (configPoll) clearInterval(configPoll); configPoll=null; }
+function setAllMods(on){ for (const m of modulesMeta){ setState.enabled[m.key]=on; queueChange(m.key,on,m.name);} renderMods(); }
+function setSafeMods(){
+  for (const m of modulesMeta){ const on=LOW_RISK.has(m.key); setState.enabled[m.key]=on; queueChange(m.key,on,m.name); }
+  renderMods();
+}
+
+async function needConfirm(moduleKey, isOneClick) {
+  if (isOneClick) return setState.config.confirm_one_click_settings !== false;
+  return setState.config['confirm_'+moduleKey] !== false;
+}
+
+/**
+ * 单独运行：读 NDJSON 流，逐行更新运行状态（快速刷图逐轮；C7/L6）。
+ * 勿用默认 api() 一次 JSON 解析——响应已是 x-ndjson。
+ */
+async function runOneMod(key, name) {
+  if (await needConfirm(key, false)) {
+    if (!confirm('确认单独运行：'+name+'？\n（不会改变一键勾选）')) return;
+  }
+  showToast('开始', name+'（进度见运行状态条）');
+  // 展开运行状态
+  try {
+    if (runBox && runBox.classList.contains('hidden')) runBox.classList.remove('hidden');
+  } catch(_){}
+  if (typeof runText !== 'undefined' && runText) {
+    runText.textContent = name + ' · 登录并准备中…';
+  }
+  if (typeof progBar !== 'undefined' && progBar) progBar.style.width = '0%';
+  startRunPoll();
+  const longMs = (key === 'super_sweep' || key === 'super_wash' || key === 'self_raid' || key === 'support_raid')
+    ? 900000 : 300000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), longMs);
+  let lastMsg = '';
+  let ok = true;
+  try {
+    const res = await fetch('/api/accounts/'+enc(currentAlias)+'/module/'+enc(key)+'/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-token': token },
+      body: '{}',
+      signal: ctrl.signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(()=>({}));
+      throw new Error(j.error || ('HTTP '+res.status));
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        try {
+          const ev = JSON.parse(line);
+          lastMsg = ev.message || lastMsg;
+          if (ev.status === 'error') ok = false;
+          if (typeof runText !== 'undefined' && runText) {
+            const pct = (ev.total > 0 && ev.round > 0)
+              ? Math.min(100, Math.round(100 * ev.round / ev.total))
+              : null;
+            const step = (ev.round && ev.total)
+              ? ` [${ev.round}/${ev.total}]`
+              : '';
+            runText.textContent = `${name}${step} · ${ev.status||''} · ${ev.message||''}`;
+            if (pct != null && typeof progBar !== 'undefined' && progBar) {
+              progBar.style.width = pct + '%';
+            }
+          }
+          if (ev.done && (ev.status === 'done' || ev.status === 'error')) {
+            ok = ev.status !== 'error' && ok;
+          }
+        } catch(_){}
+      }
+    }
+    if (typeof progBar !== 'undefined' && progBar && ok) progBar.style.width = '100%';
+    showToast(ok ? '完成' : '结束', lastMsg || name, !ok);
+  } catch (e) {
+    const msg = (e && e.name === 'AbortError')
+      ? '请求超时：模块可能仍在运行，请看运行状态条与程序运行面板终端'
+      : String(e);
+    showToast('失败', msg, true);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runOneClick() {
+  await flushSave();
+  if (await needConfirm('', true)) {
+    if (!confirm('确认一键清日常？（仅已勾选模块）')) return;
+  }
+  await streamDaily(currentAlias, { enabled:{...setState.enabled}, config:{...setState.config}, save:true });
+}
+
+async function runCardDaily(alias) {
+  const j = await api('/api/accounts/'+enc(alias)+'/config');
+  const conf = j.config||{};
+  const need = conf.confirm_one_click_home !== undefined ? conf.confirm_one_click_home !== false : conf.confirm_one_click_daily !== false;
+  if (need) {
+    if (!confirm('确认对「'+alias+'」一键清日常？')) return;
+  }
+  const enabled = {};
+  for (const m of (j.modules||[])) {
+    enabled[m.key] = typeof conf[m.key]==='boolean' ? conf[m.key] : !!m.default_enabled;
+  }
+  await streamDaily(alias, { enabled, config:{}, save:false }, false);
+}
+
+async function streamDaily(alias, body, quiet) {
+  const n = Object.values(body.enabled||{}).filter(Boolean).length;
+  if (!n) { showToast('未启用模块','请先勾选',true); return; }
+  // 打开运行面板以便看多账号进度
+  if (document.getElementById('homeConsoleToggle') && !document.getElementById('homeConsoleToggle').checked) {
+    /* 不强制开；设置页顶栏仍有 */
+  }
+  try {
+    // 流式日常：用长 Abort；部分浏览器无 body 时仍须长超时
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), 900000);
+    const res = await fetch('/api/accounts/'+enc(alias)+'/daily/stream',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-token':token},
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+      cache: 'no-store',
+    }).finally(()=>clearTimeout(t));
+    if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error || res.status);
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf='';
+    while (true) {
+      const {value, done} = await reader.read(); if (done) break;
+      buf += dec.decode(value,{stream:true});
+      let i; while ((i=buf.indexOf('\n'))>=0) {
+        const line = buf.slice(0,i).trim(); buf=buf.slice(i+1);
+        if (!line) continue;
+        try {
+          const ev = JSON.parse(line);
+          // 进度条由 startRunPoll 读 RunHub 统一刷新（跨组一致）；流式只更新文案避免超前一拍
+          if (typeof runText!=='undefined' && runText) {
+            const step = (ev.round && ev.total) ? ` ${ev.round}/${ev.total}` : '';
+            runText.textContent = `${alias}${step} [${ev.status}] ${ev.name||ev.key}: ${ev.message||''}`;
+          }
+        } catch(_){}
+      }
+    }
+    if (!quiet) showToast('一键结束', alias);
+  } catch(e){ showToast(quiet?alias+'失败':'一键失败', String(e), true); throw e; }
+}
+
+async function exportShopPack(scope){
+  scope = scope || 'SHOP3';
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/shop_pack?scope='+enc(scope));
+    await navigator.clipboard.writeText(j.code||'');
+    showToast('已复制 '+scope, (j.code||'').slice(0,56)+'…');
+  } catch(e){ showToast('导出失败', String(e), true); }
+}
+async function importShopPack(expectKind){
+  const code = prompt('粘贴商店短码（AM2.SHOP…）');
+  if (!code) return;
+  if (!confirm('将按短码覆盖对应商店优先级（先清零再写入），确认？')) return;
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/shop_pack',{method:'POST',body:{code, kind: expectKind||''}});
+    showToast('已导入', j.message||'ok');
+    await openSettingsData();
+  } catch(e){ showToast('导入失败', String(e), true); }
+}
+async function exportConfigPack(){
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/config_pack');
+    await navigator.clipboard.writeText(j.code||'');
+    showToast('已复制整卡短码', (j.code||'').slice(0,56)+'…');
+  } catch(e){ showToast('导出失败', String(e), true); }
+}
+async function importConfigPack(){
+  const code = prompt('粘贴整卡配置短码（AM2.CFG…）');
+  if (!code) return;
+  if (!confirm('将合并导入整卡设置（不含引继/密码），确认？')) return;
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/config_pack',{method:'POST',body:{code}});
+    showToast('已导入', j.message||'ok');
+    await openSettingsData();
+  } catch(e){ showToast('导入失败', String(e), true); }
+}
+async function exportConfigFile(){
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/config_file');
+    const blob = new Blob([JSON.stringify(j, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'RustMadoka-settings-'+currentAlias+'.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('已下载', a.download);
+  } catch(e){ showToast('导出失败', String(e), true); }
+}
+async function importConfigFile(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/json,.json';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      if (!confirm('从文件导入设置到「'+currentAlias+'」？')) return;
+      const j = await api('/api/accounts/'+enc(currentAlias)+'/config_file',{method:'POST',body:{text}});
+      showToast('已导入', j.message||'ok');
+      await openSettingsData();
+    } catch(e){ showToast('导入失败', String(e), true); }
+  };
+  inp.click();
+}
+async function loadWashOptions(){
+  const hint = document.getElementById('washLoadHint');
+  hint.textContent = '加载中（登录中）…';
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/wash_options');
+    const fill = (sel, arr) => {
+      sel.innerHTML = (arr||[]).map(o=>`<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
+    };
+    fill(document.getElementById('washStyle'), j.styles);
+    fill(document.getElementById('washSub1'), j.sub_selections);
+    fill(document.getElementById('washSub2'), j.sub_selections);
+    fill(document.getElementById('washSub3'), j.sub_selections);
+    hint.textContent = '已加载 '+(j.styles||[]).length+' 角色 · '+(j.sub_selections||[]).length+' 词条';
+  } catch(e){ hint.textContent = '失败：'+e; showToast('加载失败', String(e), true); }
+}
+async function runWash(){
+  if (!allowTool) { showToast('工具未开放','',true); return; }
+  if (!confirm('确认开始洗词条？会消耗游戏内资源。')) return;
+  const style_id = Number(document.getElementById('washStyle').value||0);
+  const target_ids = [1,2,3].map(i=>Number(document.getElementById('washSub'+i).value||0));
+  const body = {
+    style_id,
+    selection_index: Number(document.getElementById('washIdx').value||1),
+    repeat_times: Number(document.getElementById('washTimes').value||10),
+    target_ids,
+    or_logic: !!document.getElementById('washOr').checked,
+  };
+  const log = document.getElementById('washLog');
+  log.classList.remove('hidden');
+  log.textContent = '运行中…';
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/wash',{method:'POST',body});
+    log.textContent = j.log||'完成';
+    showToast('洗词条结束', 'ok');
+  } catch(e){ log.textContent = String(e); showToast('失败', String(e), true); }
+}
+
+/** 已展开的完整日志 id 集合（允许多条同时展开，内容贴在该条下方） */
+const expandedLogIds = new Set();
+
+async function loadLogs() {
+  // 同步自动清理 UI（按天）
+  const auto = document.getElementById('logAutoClean');
+  const daysEl = document.getElementById('logRetainDays');
+  if (auto) auto.checked = !!setState.config?.log_auto_clean;
+  if (daysEl) daysEl.value = String(setState.config?.log_retain_days || 7);
+  const allowed = new Set([...document.querySelectorAll('.trF:checked')].map(x=>x.value));
+  let sessions = [];
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/task_logs');
+    sessions = j.sessions||[];
+  } catch(e){ logList.innerHTML = '<span class="err">'+esc(String(e))+'</span>'; return; }
+  sessions = sessions.filter(s => allowed.has(normalizeTrigger(s.trigger)));
+  if (logContext==='card') sessions = sessions.filter(s => normalizeTrigger(s.trigger)==='one_click_daily');
+  if (logContext==='module' && logModuleFilter) {
+    const mk = logModuleFilter;
+    sessions = sessions.filter(s => {
+      if (normalizeTrigger(s.trigger) !== 'single_module') return false;
+      return (s.module_filter === mk) || (s.message||'').includes(mk);
+    });
+  }
+  const head = (logContext==='module' && logModuleFilter)
+    ? `<p class="muted">当前筛选：功能 <strong>${esc(logModuleName||logModuleFilter)}</strong>（键 ${esc(logModuleFilter)}）的单独运行。 <button type="button" class="tiny secondary" onclick="logContext='all';logModuleFilter=null;loadLogs()">显示全部日志</button></p>`
+    : '';
+  logList.innerHTML = head + (sessions.length ? sessions.map(s => {
+    const t = normalizeTrigger(s.trigger);
+    const st = s.status||'';
+    const isErr = st==='error' || st==='Error' || st==='失败';
+    const modTag = s.module_filter ? ` · 模块 ${esc(s.module_filter)}` : '';
+    const msg = (s.message||'').trim() || '（无说明；旧日志可能缺少中文诊断）';
+    const msgShort = msg.length>280 ? msg.slice(0,280)+'…' : msg;
+    const open = expandedLogIds.has(s.id);
+    return `<div class="log-item" data-log-id="${esc(s.id)}" style="${isErr?'border-left:3px solid #f87171':''}">
+      <div class="muted">${esc(s.started_at||'')} · ${esc(triggerLabel(t))}${modTag} · <strong class="${isErr?'err':''}">${esc(statusLabel(st))}</strong></div>
+      <div style="white-space:pre-wrap;margin:6px 0;${isErr?'color:#fecaca':''}">${esc(msgShort)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button type="button" class="secondary tiny btn-fold ${open?'is-open':''}" id="btnOpenLog_${esc(s.id)}" onclick="toggleLogExpand('${esc(s.id)}')">${open?'收起完整日志':'展开完整日志'}</button>
+        ${isErr?`<button type="button" class="tiny" onclick="copyText(${JSON.stringify(msg)})">复制错误说明</button>`:''}
+      </div>
+      <div class="log-body ${open?'':'hidden'}" id="logBody_${esc(s.id)}">${open?'加载中…':''}</div>
+    </div>`;
+  }).join('') : '<p class="muted">暂无日志（单独运行或一键清日常后会出现记录）</p>');
+  // 恢复已展开项内容
+  for (const id of [...expandedLogIds]) {
+    fillLogBody(id);
+  }
+}
+function triggerLabel(t){
+  const m={one_click_daily:'一键清日常',single_module:'单独运行',cli:'命令行',scheduled:'定时'};
+  return m[t]||t;
+}
+function statusLabel(st){
+  const m={running:'运行中',paused:'已暂停',success:'成功',aborted:'已中止',error:'失败',Error:'失败',Success:'成功'};
+  return m[st]||st;
+}
+function copyText(t){
+  navigator.clipboard.writeText(t).then(()=>showToast('已复制','错误说明'),()=>showToast('复制失败','请手动选择',true));
+}
+function normalizeTrigger(t){
+  if (typeof t==='string') {
+    if (t==='OneClickDaily'||t==='one_click_daily') return 'one_click_daily';
+    if (t==='SingleModule'||t==='single_module') return 'single_module';
+    if (t==='Cli'||t==='cli') return 'cli';
+    if (t==='Scheduled'||t==='scheduled') return 'scheduled';
+    return t;
+  }
+  if (t && typeof t==='object') {
+    if ('one_click_daily' in t || t === 'one_click_daily') return 'one_click_daily';
+  }
+  // serde externally tagged: {"one_click_daily":null} won't happen with snake rename - it's "one_click_daily" as unit variant in externally tagged as string with rename_all
+  return String(t);
+}
+/** 就地展开/收起完整日志（可多条同时展开） */
+async function toggleLogExpand(id){
+  if (expandedLogIds.has(id)) {
+    expandedLogIds.delete(id);
+    const body = document.getElementById('logBody_'+id);
+    if (body) { body.classList.add('hidden'); body.textContent = ''; }
+    const b = document.getElementById('btnOpenLog_'+id);
+    if (b) { b.classList.remove('is-open'); b.textContent = '展开完整日志'; }
+    return;
+  }
+  expandedLogIds.add(id);
+  const b = document.getElementById('btnOpenLog_'+id);
+  if (b) { b.classList.add('is-open'); b.textContent = '收起完整日志'; }
+  await fillLogBody(id);
+}
+async function fillLogBody(id){
+  const body = document.getElementById('logBody_'+id);
+  if (!body) return;
+  body.classList.remove('hidden');
+  body.textContent = '加载中…';
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/task_logs/'+enc(id));
+    const s = j.session||{};
+    let human = '======== 任务摘要 ========\n';
+    human += '状态：'+(statusLabel(s.status)||s.status)+'\n';
+    human += '触发：'+(triggerLabel(normalizeTrigger(s.trigger)))+'\n';
+    if (s.module_filter) human += '模块键：'+s.module_filter+'\n';
+    human += '开始：'+(s.started_at||'')+'\n';
+    human += '结束：'+(s.finished_at||'')+'\n\n';
+    human += '【说明 / 错误诊断】\n'+(s.message||'（无）')+'\n\n';
+    if (s.modules && s.modules.length) {
+      human += '【模块结果】\n';
+      for (const m of s.modules) {
+        human += `- [${m.status}] ${m.name||m.key}\n  ${m.log||''}\n`;
+      }
+    } else {
+      human += '【模块结果】（空）— 若失败，请重点看上方「说明」。\n';
+    }
+    human += '\n======== 原始 JSON（分析用）========\n'+JSON.stringify(s, null, 2);
+    body.textContent = human;
+  } catch(e) {
+    body.textContent = '完整日志不可用：'+String(e);
+  }
+}
+
+/** 保存自动清理设置；打开时二次确认并立即按天清理一次 */
+async function saveLogCleanSettings(){
+  const auto = document.getElementById('logAutoClean');
+  const daysEl = document.getElementById('logRetainDays');
+  const on = !!(auto && auto.checked);
+  const days = Number((daysEl && daysEl.value) || 7);
+  if (on) {
+    if (!confirm(
+      '确认开启「任务日志自动清理」？\n\n'+
+      '· 将保留最近 '+days+' 天内的任务日志；\n'+
+      '· 更早的记录会从本机数据文件夹删除；\n'+
+      '· 保存后会立即执行一次清理。\n\n'+
+      '此操作不可恢复（仅影响本工具记录的任务日志，不影响游戏内数据）。'
+    )) {
+      if (auto) auto.checked = !!setState.config?.log_auto_clean;
+      return;
+    }
+  }
+  await api('/api/accounts/'+enc(currentAlias)+'/config/auto',{method:'POST',body:{
+    patch:{ log_auto_clean:on, log_retain_days:days },
+    changes:[
+      {key:'log_auto_clean',label:'任务日志自动清理',after:on},
+      {key:'log_retain_days',label:'日志保留天数',after:days}
+    ]
+  }});
+  setState.config.log_auto_clean = on;
+  setState.config.log_retain_days = days;
+  showToast('已保存', on ? ('自动清理已开 · 保留 '+days+' 天') : '自动清理已关');
+  if (on) {
+    await doCleanLogs(days, false, true);
+  }
+}
+
+/** 立即清理；onlyOneClick=仅一键；silent=由保存触发时少弹窗 */
+async function manualCleanLogs(onlyOneClick){
+  const days = Number((document.getElementById('logRetainDays')||{}).value || 7);
+  const scope = onlyOneClick ? '仅「一键清日常」触发的任务日志' : '本账号全部触发类型的任务日志';
+  if (!confirm(
+    '确认立即清理？\n\n'+
+    '范围：'+scope+'\n'+
+    '规则：删除开始时间早于 '+days+' 天前的记录\n'+
+    '位置：本机数据文件夹中的任务日志\n\n'+
+    '删除后不可恢复。'
+  )) return;
+  await doCleanLogs(days, onlyOneClick, false);
+}
+async function doCleanLogs(days, onlyOneClick, fromAuto){
+  try {
+    const j = await api('/api/accounts/'+enc(currentAlias)+'/task_logs',{
+      method:'DELETE',
+      body:{ retain_days: days, only_one_click: !!onlyOneClick }
+    });
+    showToast(fromAuto?'已自动清理':'清理完成', j.message||('删除 '+(j.removed||0)+' 条'));
+    loadLogs();
+  } catch(e){ showToast('清理失败', String(e), true); }
+}
+/** 单功能日志入口：只筛该模块的单独运行（及对照一键） */
+let logModuleFilter = null;
+let logModuleName = '';
+function goModLog(key, name){
+  logContext = 'module';
+  logModuleFilter = key || null;
+  logModuleName = name || key || '';
+  navigate('/'+enc(currentGroup)+'/'+enc(currentAlias)+'/日志');
+  setTimeout(()=>loadLogs(), 100);
+}
+
+
+
+function startRunPoll(){
+  stopRunPoll();
+  const tick = async ()=>{
+    try {
+      // 设置页：不传 group，进度条跟 game_id（跨组同步）；prefer alias
+      const q = currentAlias ? ('?alias='+enc(currentAlias)) : '';
+      const j = await api('/api/run/status'+q);
+      const runs = j.runs_all || j.runs || [];
+      // 设置页进度优先匹配当前别名或当前卡 game_id（跨组同身份）
+      let r = j.run||{};
+      const cardGid = document.querySelector('.card[data-alias="'+CSS.escape(currentAlias||'')+'"]')?.dataset?.gameId
+        || (window.__settingsGameId||'');
+      if (currentAlias || cardGid) {
+        const hit = runs.find(x => x.busy && (
+          (currentAlias && x.alias === currentAlias) ||
+          (cardGid && x.game_id_hash === cardGid)
+        ));
+        if (hit) r = hit;
+      }
+      window.__lastRunSnap = r;
+      const box = runBox;
+      const rep = document.getElementById('runReport');
+      if (r.busy) {
+        box.classList.add('busy');
+        if (r.paused) box.classList.add('paused'); else box.classList.remove('paused');
+        const og = r.group && currentGroup && r.group !== currentGroup ? `（发起组 ${r.group}，只读）` : (r.group?`（发起组 ${r.group}）`:'');
+        // 进度条与文案均以 RunHub 快照为准（跨组一致；避免流式页超前一拍）
+        runText.textContent = `${r.kind||''} ${r.alias||''}${og} [${r.current_status||''}] ${r.current_name||''} ${r.message||''}`
+          + ((r.total>0)?` · ${r.round||0}/${r.total}`:'');
+        if (r.total>0) progBar.style.width = Math.min(100, Math.round(100*(r.round||0)/r.total))+'%';
+        else if (r.busy) progBar.style.width = '8%'; // 不确定进度时浅进度，避免 0 与 100 误导
+        if (rep) { rep.classList.add('hidden'); rep.textContent=''; }
+      } else {
+        box.classList.remove('busy','paused');
+        if (r.last_report) {
+          runText.textContent = r.message || (r.last_report_ok===false ? '已结束（有错误）' : '已完成');
+          if (rep) {
+            rep.classList.remove('hidden');
+            rep.textContent = r.last_report;
+            rep.style.borderColor = r.last_report_ok===false ? '#b91c1c' : '#15803d';
+          }
+          if (r.total>0) progBar.style.width = '100%';
+        } else {
+          runText.textContent = '空闲';
+          progBar.style.width = '0%';
+          if (rep) { rep.classList.add('hidden'); rep.textContent=''; }
+        }
+      }
+      paintRunsToCards(runs);
+      updateBusyUI({ ...r, runs, runs_all: runs });
+      paintRunControlButtons(r);
+    } catch(_){}
+  };
+  tick();
+  // 略快轮询，减少跨组进度条相对发起页的可见滞后
+  pollRun = setInterval(tick, 400);
+}
+function stopRunPoll(){ if (pollRun) clearInterval(pollRun); pollRun=null; }
+
+/**
+ * 运行条按钮随状态变 UI（NORMS 展开折叠双态 · 用户点测反馈）。
+ * - 折叠钮：runBox 可见 = is-open「折叠运行状态」；隐藏 = 收起态「展开运行状态」
+ * - 紧急暂停：busy 且未暂停 = 高亮可点；暂停中 = 普通；空闲 = disabled
+ * - 继续：paused = 高亮；busy 未暂停 = 普通；空闲 = disabled
+ */
+function paintRunControlButtons(r) {
+  r = r || {};
+  const busy = !!r.busy && canControlRun(r);
+  // 非发起用户组：按钮禁用并提示
+  const hint = document.getElementById('runOwnerHint');
+  if (hint) {
+    if (r.busy && !canControlRun(r) && r.group) {
+      hint.textContent = '任务由用户组「'+r.group+'」发起：本页可看进度，不可暂停/继续/放弃。';
+      hint.classList.remove('hidden');
+    } else {
+      hint.textContent = '';
+      hint.classList.add('hidden');
+    }
+  }
+  const paused = !!r.paused;
+  const toggle = document.getElementById('btnToggleRun');
+  if (toggle && runBox) {
+    const open = !runBox.classList.contains('hidden');
+    toggle.classList.toggle('btn-fold', true);
+    toggle.classList.toggle('is-open', open);
+    toggle.textContent = open ? '折叠运行状态' : '展开运行状态';
+  }
+  const pause = document.getElementById('btnPause');
+  const resume = document.getElementById('btnResume');
+  const abort = document.getElementById('btnAbort');
+  if (pause) {
+    pause.disabled = !busy || paused;
+    pause.classList.toggle('is-warn-active', busy && !paused);
+    pause.classList.toggle('is-active', false);
+  }
+  if (resume) {
+    resume.disabled = !busy || !paused;
+    resume.classList.toggle('is-active', busy && paused);
+    resume.classList.toggle('is-warn-active', false);
+  }
+  if (abort) {
+    abort.disabled = !busy;
+  }
+}
+let homeConsolePoll = null;
+function toggleHomeConsole(){
+  const on = document.getElementById('homeConsoleToggle')?.checked;
+  localStorage.setItem('homeConsoleOn:'+(currentGroup||''), on ? '1' : '0');
+  document.getElementById('homeConsole')?.classList.toggle('hidden', !on);
+  if (on) startHomeConsolePoll(); else stopHomeConsolePoll();
+}
+function setCtrlEnabled(btn, on){
+  if (!btn) return;
+  btn.disabled = !on;
+  btn.style.opacity = on ? '1' : '0.35';
+  btn.style.background = on ? '' : '#1e293b';
+  btn.style.color = on ? '' : '#475569';
+  btn.style.cursor = on ? 'pointer' : 'not-allowed';
+}
+function runCtrlBody(){
+  return { group: currentGroup || '', alias: currentAlias || undefined };
+}
+/** 当前页是否为某 busy 任务的发起用户组（仅发起组可暂停/继续/放弃） */
+function canControlRun(r){
+  if (!r || !r.busy) return false;
+  const og = r.group || '';
+  return !!currentGroup && og === currentGroup;
+}
+function wireHomeConsoleBtns(){
+  const p = document.getElementById('hcPause');
+  const r = document.getElementById('hcResume');
+  const a = document.getElementById('hcAbort');
+  const c = document.getElementById('hcClear');
+  if (p) p.onclick = async ()=>{ try { await api('/api/run/pause',{method:'POST',body:runCtrlBody()}); showToast('暂停'); } catch(e){ showToast(String(e),true);} };
+  if (r) r.onclick = async ()=>{ try { await api('/api/run/resume',{method:'POST',body:runCtrlBody()}); showToast('继续'); } catch(e){ showToast(String(e),true);} };
+  if (a) a.onclick = async ()=>{ if(!confirm('放弃当前任务？\n仅发起该任务的用户组可以放弃。'))return; try { await api('/api/run/abort',{method:'POST',body:runCtrlBody()}); showToast('已请求放弃'); } catch(e){ showToast(String(e),true);} };
+  if (c) c.onclick = async ()=>{ try { await api('/api/run/clear_report',{method:'POST',body:{}}); showToast('已清空'); } catch(e){ showToast(String(e),true);} };
+}
+/** 主页完整监视流上次渲染到的最大 seq（增量追加，避免整表闪烁） */
+let homeStreamLastSeq = 0;
+function startHomeConsolePoll(){
+  stopHomeConsolePoll();
+  homeStreamLastSeq = 0;
+  const tick = async ()=>{
+    try {
+      // group= 过滤本组完整 stream_lines + runs；runs_all 给卡片跨组
+      const q = currentGroup ? ('?group='+enc(currentGroup)) : '';
+      const j = await api('/api/run/status'+q);
+      const box = document.getElementById('homeConsoleLines');
+      const runs = j.runs||[];
+      const all = j.runs_all || runs;
+      const busyOwned = runs.some(x => canControlRun(x));
+      setCtrlEnabled(document.getElementById('hcPause'), busyOwned);
+      setCtrlEnabled(document.getElementById('hcResume'), busyOwned);
+      setCtrlEnabled(document.getElementById('hcAbort'), busyOwned);
+      if (!box) return;
+      const stream = j.stream_lines || [];
+      if (!stream.length) {
+        if (homeStreamLastSeq === 0) {
+          box.innerHTML = '<div class="line muted">本用户组监视流空闲。开始任务后将逐行追加完整过程（刷图每轮开局/结算等），不是设置页那种进度条摘要。</div>';
+        }
+      } else {
+        // 全量重绘（流可截断最旧；实现简单可靠）
+        const follow = document.getElementById('hcFollow')?.checked;
+        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        box.innerHTML = stream.map(L => {
+          return `<div class="line"><span class="ts">${esc(L.ts||'')}</span><span class="al">${esc(L.alias||'?')}</span>${esc(L.text||'')}</div>`;
+        }).join('');
+        const maxSeq = stream.reduce((m,L)=>Math.max(m, L.seq||0), 0);
+        if (follow || nearBottom || maxSeq > homeStreamLastSeq) {
+          box.scrollTop = box.scrollHeight;
+        }
+        homeStreamLastSeq = maxSeq;
+      }
+      paintRunsToCards(all);
+      updateBusyUI({ runs: runs, runs_all: all, busy_any: j.busy_any });
+    } catch(_){}
+  };
+  tick();
+  homeConsolePoll = setInterval(tick, 500);
+}
+async function loadBuildVerUi(){
+  try {
+    const v = await api('/api/version');
+    const t = `构建 ${v.build_stamp||v.local?.build_stamp||'?'} · 上游 ${v.upstream_compat||v.local?.upstream_compat||''}`;
+    const el = document.getElementById('homeBuildVer');
+    if (el) el.textContent = t;
+    const s = document.getElementById('setBuildVer');
+    if (s) s.textContent = t;
+    const ph = document.getElementById('portHint');
+    // portHint 已有端口信息时不覆盖；版本在账号旁
+  } catch(_){}
+}
+function stopHomeConsolePoll(){ if (homeConsolePoll) clearInterval(homeConsolePoll); homeConsolePoll=null; }
+/**
+ * 卡片运行文案（MULTI_GROUP §5）：
+ * - 本用户组发起：显示「清日常/某功能运行中」
+ * - 其它用户组同 game_id_hash：显示「在用户组 X 中正在运行」
+ * - 不把其它组流式明细画进主页监视窗（主页流另滤 group）
+ */
+function paintRunsToCards(runs){
+  document.querySelectorAll('.card-run').forEach(el=>{
+    const al = el.getAttribute('data-run-alias');
+    const card = el.closest('.card');
+    const gid = card ? (card.getAttribute('data-game-id')||'') : '';
+    const r = (runs||[]).find(x => (gid && x.game_id_hash === gid) || (x.alias === al && (!x.group || x.group === currentGroup)));
+    // 优先按 game_id_hash 找任意组 busy
+    const rAll = (runs||[]).find(x => gid && x.game_id_hash === gid && x.busy) || r;
+    if (!rAll) { el.textContent = ''; el.dataset.hold = ''; return; }
+    if (rAll.busy) {
+      const pct = rAll.total>0 ? Math.min(100, Math.round(100*rAll.round/rAll.total)) : 0;
+      const rg = rAll.group || '';
+      const feat = rAll.current_name || rAll.kind || '任务';
+      let text;
+      if (rg && currentGroup && rg !== currentGroup) {
+        text = `在用户组「${rg}」中正在运行：${feat}`;
+      } else {
+        text = `${feat} 运行中`;
+      }
+      el.innerHTML = `<span class="warn">▶ ${esc(text)}${pct?(' '+pct+'%'):''}</span>`;
+      el.dataset.hold = '1';
+    } else if (rAll.last_report && (!rAll.group || rAll.group === currentGroup)) {
+      el.innerHTML = rAll.last_report_ok===false ? '<span class="err">最近：失败（见运行状态/日志）</span>' : '<span class="ok">最近：完成</span>';
+      el.dataset.hold = '';
+    } else { el.textContent = ''; el.dataset.hold = ''; }
+  });
+}
+function updateBatchBtn(){
+  const n = document.querySelectorAll('.cardPick:checked').length;
+  const b = document.getElementById('btnBatchDaily');
+  if (b) { b.disabled = !allowDaily || n===0; b.textContent = n ? `一键清理所选（${n}）` : '一键清理所选卡片日常'; }
+  const h = document.getElementById('batchHint');
+  if (h) h.textContent = n ? `已选 ${n} 张` : '勾选卡片后可批量（会二次确认）';
+}
+async function runBatchDaily(){
+  const aliases = [...document.querySelectorAll('.cardPick:checked')].map(x=>x.value);
+  if (!aliases.length) return;
+  if (!confirm('确认对以下卡片一键清日常？\n\n· '+aliases.join('\n· ')+'\n\n仅已勾选的日常模块；按账号依次执行。')) return;
+  showToast('批量开始', aliases.length+' 张');
+  for (const al of aliases) {
+    try {
+      await runCardDailySilent(al);
+    } catch(e) {
+      showToast(al+' 失败', String(e), true);
+    }
+  }
+  showToast('批量结束', aliases.length+' 张');
+}
+async function runCardDailySilent(alias){
+  const j = await api('/api/accounts/'+enc(alias)+'/config');
+  const conf = j.config||{};
+  const enabled = {};
+  for (const m of (j.modules||[])) {
+    enabled[m.key] = typeof conf[m.key]==='boolean' ? conf[m.key] : !!m.default_enabled;
+  }
+  const n = Object.values(enabled).filter(Boolean).length;
+  if (!n) { showToast(alias, '未启用模块，跳过', true); return; }
+  await streamDaily(alias, { enabled, config:{}, save:false }, true);
+}
+
+async function loadFpSlotsUi(){
+  try {
+    const j = await api('/api/fp/slots');
+    const s = j.store||{};
+    const last = s.last_default_refresh||{};
+    const lastAt = last.at ? String(last.at).replace('T',' ').slice(0,16) : '尚未';
+    const lastSt = last.message_zh || last.status || '—';
+    const short = `日服 ${esc(s.jp_version||'—')} · 国际服 ${esc(s.en_version||'—')}`;
+    const home = document.getElementById('homeFpSummary');
+    if (home) home.innerHTML = short;
+    const loginSum = document.getElementById('loginFpSummary');
+    if (loginSum) loginSum.innerHTML = `${short}<br/><span class="muted">上次刷新：${esc(lastAt)} · ${esc(lastSt)} · 启用：${esc(s.active_label||'—')}</span>`;
+    const foldTitle = document.getElementById('verFoldTitle');
+    if (foldTitle) foldTitle.textContent = `版本与指纹槽 · ${short.replace(/<[^>]+>/g,'')} · 上次 ${lastAt}`;
+    const detail = document.getElementById('verFoldDetail');
+    if (detail) detail.innerHTML = `上次默认源：${esc(lastAt)} · ${esc(lastSt)}<br/>当前启用：${esc(s.active_label||s.active_slot_id||'—')}<br/>程序内置与已更新缓存、自定义槽见下。`;
+    const verLocal = document.getElementById('verLocal');
+    if (verLocal) {
+      const v = await api('/api/version').catch(()=>({}));
+      verLocal.textContent = '程序 build_stamp='+(v.build_stamp||'?')+' · 启用槽='+(s.active_label||'');
+    }
+    const renderSlots = (listEl) => {
+      if (!listEl) return;
+      listEl.innerHTML = (s.slots||[]).map(sl => {
+        const cls = 'slot-card'+(sl.active?' active':'')+(sl.filled?'':' empty');
+        const enBtn = sl.can_enable
+          ? `<button type="button" class="tiny" ${sl.active?'disabled':''} onclick="activateSlot('${esc(sl.id)}')">启用</button>`
+          : `<button type="button" class="tiny" disabled>空·不能启用</button>`;
+        const delBtn = sl.can_delete && sl.filled
+          ? `<button type="button" class="danger tiny" onclick="clearSlot('${esc(sl.id)}')">清空</button>` : '';
+        return `<div class="${cls}">
+          <div><strong>${esc(sl.label)}</strong> ${sl.active?'<span class="ok">· 使用中</span>':''}</div>
+          <div class="muted">JP ${esc(sl.jp_version||'—')} · EN ${esc(sl.en_version||'—')} · ${esc(sl.note||'')}</div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${enBtn}${delBtn}</div>
+        </div>`;
+      }).join('') + `<p class="muted">${esc(s.hint||'')}</p>`;
+    };
+    renderSlots(document.getElementById('slotList'));
+    renderSlots(document.getElementById('loginSlotList'));
+  } catch(e) {
+    const home = document.getElementById('homeFpSummary');
+    if (home) home.textContent = '加载失败';
+    const loginSum = document.getElementById('loginFpSummary');
+    if (loginSum) loginSum.textContent = '加载失败：'+e;
+  }
+}
+async function refreshDefaultFp(){
+  try {
+    showToast('刷新中','默认源…');
+    const j = await api('/api/fp/default/refresh',{method:'POST',body:{}, timeoutMs: 35000});
+    const st = (j.result&&j.result.status) || (j.ok===false ? 'unreachable' : 'ok');
+    const m = (j.result&&j.result.message_zh)
+      || (j.ok===false ? (j.error||'刷新失败') : '已更新并启用拉取槽');
+    showToast(st==='ok'?'默认源已更新':'默认源', m, st!=='ok');
+    await loadFpSlotsUi();
+  } catch(e){ showToast('刷新失败', String(e), true); }
+}
+async function activateSlot(id){
+  if (!confirm('确认启用该指纹槽？\n（全局同时只能启用一个）')) return;
+  try {
+    await api('/api/fp/slots/activate',{method:'POST',body:{id}});
+    showToast('已启用', id);
+    await loadFpSlotsUi();
+  } catch(e){ showToast('启用失败', String(e), true); }
+}
+async function clearSlot(id){
+  if (!confirm('确认清空该自定义槽？\n若正在使用会切回内置。')) return;
+  try {
+    await api('/api/fp/slots/clear',{method:'POST',body:{id}});
+    showToast('已清空', id);
+    await loadFpSlotsUi();
+  } catch(e){ showToast('清空失败', String(e), true); }
+}
+async function fillCustomSlot(){
+  const id = document.getElementById('fillSlotId').value;
+  const url = (document.getElementById('customSourceUrl').value||'').trim();
+  const text = (document.getElementById('pasteVer').value||'').trim();
+  if (!url && !text) { showToast('请填写', 'URL 或粘贴 JSON', true); return; }
+  if (!confirm('写入前会校验格式；不合格不会填入。\n写入后需手动点「启用」。继续？')) return;
+  try {
+    const j = await api('/api/fp/slots/fill',{method:'POST',body:{id,url,text}});
+    showToast('已写入', j.message||'请手动启用');
+    document.getElementById('pasteVer').value='';
+    await loadFpSlotsUi();
+  } catch(e){ showToast('写入失败', String(e), true); }
+}
+async function resetFpSlots(){
+  if (!confirm('【一键复位】将启用「程序内置」默认指纹槽。\n不会删除自定义槽内容，但取消对它们的启用。\n确认？')) return;
+  try {
+    await api('/api/fp/slots/reset',{method:'POST',body:{}});
+    showToast('已复位','内置默认槽');
+    await loadFpSlotsUi();
+  } catch(e){ showToast('复位失败', String(e), true); }
+}
+function goDiagnose(){ navigate('/'+enc(currentGroup)+'/检测'); }
+let lastDiagReport = '';
+async function loadDiagAccounts(){
+  try {
+    const j = await api('/api/accounts');
+    const sel = document.getElementById('diagAlias');
+    const accs = j.accounts||[];
+    sel.innerHTML = accs.length
+      ? accs.map(a=>`<option value="${esc(a.alias)}">${esc(a.alias)}（${esc(a.channel||'?')}）</option>`).join('')
+      : '<option value="">（无账号）</option>';
+  } catch(e){ showToast('加载账号失败', String(e), true); }
+}
+async function runDiagnose(withLogin){
+  const alias = withLogin ? (document.getElementById('diagAlias').value||'') : '';
+  if (withLogin && !alias) { showToast('请先选账号','或用「仅环境」', true); return; }
+  document.getElementById('diagSteps').textContent = '检测中…';
+  document.getElementById('diagSummary').textContent = '…';
+  try {
+    const j = await api('/api/diagnose',{
+      method:'POST',
+      body:{ alias: alias||'', with_login: !!withLogin },
+      timeoutMs: withLogin ? 90000 : 25000,
+    });
+    const steps = j.steps||[];
+    document.getElementById('diagSteps').innerHTML = steps.length
+      ? steps.map(s=>{
+          const cls = s.ok ? 'step-ok' : 'step-bad';
+          const d = typeof s.detail==='object' ? JSON.stringify(s.detail) : String(s.detail||'');
+          return `<div class="${cls}">${s.ok?'✓':'✗'} ${esc(s.title)} — ${esc(d)}</div>`;
+        }).join('')
+      : '<div class="muted">无步骤返回</div>';
+    document.getElementById('diagSummary').textContent = j.summary_zh||'（无总评）';
+    lastDiagReport = j.report_text||'';
+    const pre = document.getElementById('diagReport');
+    pre.classList.remove('hidden');
+    pre.textContent = lastDiagReport || '（无报告正文）';
+    await loadFpSlotsUi();
+  } catch(e){ showToast('检测失败', String(e), true); document.getElementById('diagSteps').textContent = String(e); }
+}
+function copyDiagReport(){
+  const t = lastDiagReport || document.getElementById('diagReport').textContent || '';
+  if (!t) { showToast('无报告','请先检测', true); return; }
+  navigator.clipboard.writeText(t).then(()=>showToast('已复制','完整报告'),()=>showToast('复制失败','',true));
+}
+/** PLAN_UI §3 · MULTI_GROUP §5：忙线冲突操作灰显；按 game_id_hash 识别跨组同号 */
+function updateBusyUI(r){
+  r = r || {};
+  const runs = r.runs_all || r.runs || [];
+  const busyByGid = new Map();
+  const busyAliasesLocal = new Set();
+  if (r.busy && r.alias && (!r.group || r.group === currentGroup)) busyAliasesLocal.add(r.alias);
+  runs.forEach(x => {
+    if (!x.busy) return;
+    if (x.game_id_hash) busyByGid.set(x.game_id_hash, x);
+    if (x.alias && (!x.group || x.group === currentGroup)) busyAliasesLocal.add(x.alias);
+  });
+  document.querySelectorAll('.card').forEach(c => {
+    const a = c.dataset.alias;
+    const gid = c.dataset.gameId || '';
+    const cross = gid && busyByGid.get(gid);
+    const busyHere = busyAliasesLocal.has(a) || !!cross;
+    const sameIdentityBusy = !!cross;
+    c.style.outline = busyHere ? '2px solid #f59e0b' : '';
+    c.classList.toggle('card-busy', busyHere);
+    // 忙线：一键清日常/删除等冲突操作灰显（同游戏身份跨组也禁打服类操作）
+    c.querySelectorAll('button').forEach(b => {
+      const t = (b.textContent||'').trim();
+      const conflict = t.includes('一键清日常') || t.includes('删除卡片') || t.includes('复制配置');
+      if (conflict) {
+        if (busyHere) b.disabled = true;
+        else if (t.includes('一键清日常')) b.disabled = !allowDaily;
+        else b.disabled = false;
+      }
+    });
+    const runEl = c.querySelector('.card-run');
+    if (runEl && sameIdentityBusy && !runEl.dataset.hold) {
+      const rg = cross.group || '';
+      const feat = cross.current_name || cross.kind || '任务';
+      if (rg && currentGroup && rg !== currentGroup) {
+        runEl.innerHTML = `<span class="warn">▶ 在用户组「${esc(rg)}」中正在运行：${esc(feat)}</span>`;
+      } else {
+        runEl.innerHTML = `<span class="warn">▶ ${esc(feat)} 运行中</span>`;
+      }
+    }
+  });
+}
+
+btnHome.onclick = () => navigate('/'+enc(currentGroup||''));
+btnToggleRun.onclick = () => {
+  runBox.classList.toggle('hidden');
+  paintRunControlButtons(window.__lastRunSnap || {});
+};
+btnPause.onclick = async () => {
+  try {
+    const j = await api('/api/run/pause',{method:'POST',body:runCtrlBody()});
+    showToast(j.message||'暂停');
+  } catch(e){ showToast('暂停失败',String(e),true); }
+};
+btnResume.onclick = async () => {
+  try {
+    const j = await api('/api/run/resume',{method:'POST',body:runCtrlBody()});
+    showToast(j.message||'继续');
+  } catch(e){ showToast(String(e),true); }
+};
+btnAbort.onclick = async () => {
+  if(!confirm('确认放弃当前任务？')) return;
+  try {
+    await api('/api/run/abort',{method:'POST',body:runCtrlBody()});
+    showToast('已请求放弃');
+  } catch(e){ showToast(String(e),true); }
+};
+document.getElementById('btnClearReport').onclick = async () => {
+  try {
+    await api('/api/run/clear_report',{method:'POST',body:{}});
+    const rep = document.getElementById('runReport');
+    if (rep) { rep.classList.add('hidden'); rep.textContent=''; }
+    runText.textContent = '空闲';
+    progBar.style.width = '0%';
+    showToast('已清空','显示');
+  } catch(e){ showToast(String(e),true); }
+};
+
+window.addEventListener('popstate', applyRoute);
+document.querySelectorAll('.trF').forEach(el => el.addEventListener('change', () => loadLogs()));
+
+// 密码框 Enter 提交（系统浏览器/桌面一致）
+document.getElementById('modalPw')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmPw(); }
+});
+
+(async function init(){
+  // C13：任一步失败须可见，禁止整页永久「加载中」
+  // 系统浏览器：先显示连通性，失败时不空转进度
+  setConnHint('正在连接本机服务…', false);
+  try {
+    await refreshGates();
+  } catch(e) {
+    try {
+      gateBanner.classList.remove('hidden');
+      gateBanner.textContent = '启动失败：'+String(e);
+      setConnHint('启动失败：'+String(e), true);
+    } catch(_) {}
+  }
+  try {
+    await applyRoute();
+  } catch(e) {
+    try {
+      const gl = document.getElementById('groupList');
+      if (gl && /加载中/.test(gl.textContent||'')) {
+        gl.innerHTML = '<p class="err">页面初始化失败：'+esc(String(e))+'（请强制刷新或确认 App/exe 在运行）</p>';
+      }
+      setConnHint('页面初始化失败：'+String(e), true);
+    } catch(_) {}
+  }
+})();
+</script>
+</body>
+</html>

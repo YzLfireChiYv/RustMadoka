@@ -1,0 +1,22 @@
+[package]
+name = "rustmadoka-mobile"
+version.workspace = true
+edition.workspace = true
+description = "RustMadoka mobile cdylib shell (Android JNI); full rewrite later"
+# 文档: docs/tech/ANDROID_DUAL_PLATFORM.md · docs/PLAN_RUSTMADOKA_FULL_REWRITE.md
+
+[lib]
+name = "rustmadoka_mobile"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+rustmadoka-app = { path = "../rustmadoka-app" }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+jni = "0.21"
+android_logger = "0.14"
+log = "0.4"

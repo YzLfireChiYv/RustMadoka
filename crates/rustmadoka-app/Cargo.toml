@@ -1,0 +1,46 @@
+[package]
+name = "rustmadoka-app"
+version.workspace = true
+edition.workspace = true
+description = "RustMadoka desktop host: CLI, loopback HTTP, Owner, static web UI (Win first)"
+# 文档: docs/tech/HTTP_SERVER.md · INSTANCE_AND_CLI.md · PLAN_RUSTMADOKA_FULL_REWRITE.md
+# 双版本: scripts/build-win-dual.ps1 · feature wire_record
+
+[lib]
+name = "rustmadoka_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "RustMadoka"
+path = "src/main.rs"
+
+[features]
+default = []
+## 开发版二进制：`RustMadoka_debug.exe`；启用 core 全量 wire 录制
+wire_record = ["rustmadoka-core/wire_record"]
+
+[dependencies]
+rustmadoka-core = { path = "../rustmadoka-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+tower = { workspace = true }
+open = { workspace = true }
+clap = { workspace = true }
+self_update = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+reqwest = { workspace = true }
+tokio-stream = { workspace = true }
+bytes = { workspace = true }
+futures-util = { workspace = true }
+fs2 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }

@@ -1,0 +1,63 @@
+# RustMadoka workspace — 平台无关 core + 桌面 app + mobile 壳
+# 全量重构计划: docs/PLAN_RUSTMADOKA_FULL_REWRITE.md
+# 文档: docs/HANDOFF.md · docs/tech/README.md
+[workspace]
+resolver = "2"
+members = [
+    "crates/rustmadoka-core",
+    "crates/rustmadoka-app",
+    "crates/rustmadoka-mobile",
+]
+default-members = ["crates/rustmadoka-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["RustMadoka"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "sync", "signal"] }
+serde = { version = "1", features = ["derive"] }
+# preserve_order：JSON 键序与 Python 3.7+ dict 插入序一致，影响 Gree oauth_body_hash
+serde_json = { version = "1", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+cipher = { version = "0.4", features = ["block-padding", "alloc"] }
+rsa = { version = "0.9", features = ["sha1", "pem"] }
+rand = "0.8"
+rmp-serde = "1"
+rmpv = { version = "1", features = ["with-serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+tower = "0.5"
+open = "5"
+clap = { version = "4", features = ["derive"] }
+self_update = { version = "0.42", default-features = false, features = ["rustls", "archive-zip"] }
+zip = "2"
+dirs = "5"
+urlencoding = "2"
+tokio-stream = "0.1"
+bytes = "1"
+futures-util = "0.3"
+num-bigint-dig = "0.8"
+pkcs8 = { version = "0.10", features = ["pem", "std"] }
+pkcs1 = { version = "0.7", features = ["pem", "std"] }
+signature = "2"
+digest = "0.10"
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac", "sha2"] }
+fs2 = "0.4"
